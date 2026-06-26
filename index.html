@@ -277,6 +277,7 @@ function makeWashi(g){ const S=200,c=document.createElement("canvas"); c.width=c
   x.globalAlpha=1; return g.createPattern(c,"repeat"); }
 const BEATS={tas:"makas",makas:"kagit",kagit:"tas"};      // anahtar, değeri yener
 const PREDOF={tas:"kagit",kagit:"makas",makas:"tas"};     // beni yiyen tür (avcım)
+const BASE_ANG={tas:-Math.PI/2, makas:Math.PI/6, kagit:Math.PI*5/6};  // başlangıç koloni köşeleri (120° aralıklı, simetrik = dengeli)
 const ADV=1.45;
 
 const STAT={
@@ -320,7 +321,7 @@ const cam={x:WORLD.w/2,y:WORLD.h/2,zoom:1,sx:0,sy:0,shake:0};
 const mouse={sx:0,sy:0,active:false};
 const joy={id:null,ox:0,oy:0,dx:0,dy:0}; let usingTouch=false, paused=false, tapT=0,tapX=0,tapY=0,touchT=0;
 let actx=null, muted=false, lastEatSnd=0;
-let bestTime=0, streak=0, dashCd=0;
+let bestTime=0, streak=0, dashCd=0, countdown=0, cdLastN=0;
 let playerType=null, running=false, t=0, last=0, winner=null;
 let mode="menu", amb=0;
 let stormCx=WORLD.w/2, stormCy=WORLD.h/2, maxR=Math.min(WORLD.w,WORLD.h)*0.5;
@@ -353,13 +354,15 @@ const s2wy=sy=>(sy-H/2)/cam.zoom+cam.y;
 function spawn(type,x,y,m){ blobs.push({type,x,y,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,mass:m,sq:0,rt:Math.random()*2}); }
 function seed(){
   blobs=[]; parts=[]; rings=[];
-  for(const ty of TYPES){ const st=STAT[ty];
+  const baseR=maxR*0.6, spread=maxR*0.27;
+  for(const ty of TYPES){ const st=STAT[ty], ba=BASE_ANG[ty];
+    const bx=stormCx+Math.cos(ba)*baseR, by=stormCy+Math.sin(ba)*baseR;   // her tür kendi köşe-kolonisinde başlar (iç içe değil)
     for(let i=0;i<st.count;i++){
-      const a=Math.random()*Math.PI*2, r=Math.random()*maxR*0.85;
-      spawn(ty, stormCx+Math.cos(a)*r, stormCy+Math.sin(a)*r, st.start*(0.8+Math.random()*0.4));
+      const a=Math.random()*Math.PI*2, r=Math.sqrt(Math.random())*spread;
+      spawn(ty, bx+Math.cos(a)*r, by+Math.sin(a)*r, st.start*(0.8+Math.random()*0.4));
     }
   }
-  for(let i=blobs.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; const tmp=blobs[i]; blobs[i]=blobs[j]; blobs[j]=tmp; } // interleave types -> no index bias
+  for(let i=blobs.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; const tmp=blobs[i]; blobs[i]=blobs[j]; blobs[j]=tmp; } // tür-bazlı index bias olmasın
 }
 
 // ---------- grid ----------
@@ -526,7 +529,7 @@ function checkWin(safeR){
   if(safeR<=20){ winner=dom(); return endGame(alive); }                       // arena closed -> most dominant colour wins
 }
 
-function playerDash(){ if(mode!=="play"||paused||dashCd>0)return;
+function playerDash(){ if(mode!=="play"||paused||countdown>0||dashCd>0)return;
   let jx=0,jy=0,useJoy=false;
   if(usingTouch && joy.id!==null){ const l=Math.hypot(joy.dx,joy.dy); if(l>JOY_DEAD){ jx=joy.dx/l; jy=joy.dy/l; useJoy=true; } }
   const tx=s2wx(mouse.sx),ty=s2wy(mouse.sy);
@@ -665,7 +668,18 @@ function toast(html,dur){ toastEl.innerHTML=html; toastEl.classList.add("show");
 function loop(ts){
   if(!last) last=ts; let dt=(ts-last)/1000; last=ts; dt=Math.min(dt,0.05);
   if(mode==="menu"){ amb+=dt; update(dt); draw(); renderTri(triHeroEl,TRI_HERO,8,24); }
-  else if(mode==="play"){ if(!paused){ t+=dt; if(dashCd>0)dashCd=Math.max(0,dashCd-dt); update(dt); } draw(); updateHud(); }
+  else if(mode==="play"){
+    if(countdown>0){
+      countdown=Math.max(0,countdown-dt);
+      const n=Math.ceil(countdown);
+      if(n!==cdLastN){ cdLastN=n; if(n>0) beep(440,0.09,"sine",0.04); }
+      updateCamera(dt); draw(); updateHud(); drawCountdown();
+      if(countdown===0) onGo();
+    } else {
+      if(!paused){ t+=dt; if(dashCd>0)dashCd=Math.max(0,dashCd-dt); update(dt); }
+      draw(); updateHud();
+    }
+  }
   // mode==="over": freeze (last frame stays under the results overlay)
   requestAnimationFrame(loop);
 }
@@ -696,9 +710,29 @@ function startGame(type){ playerType=type; mode="play"; running=true; paused=fal
   document.getElementById("hintType").style.color=COLOR[type];
   document.getElementById("start").classList.add("hidden");
   document.getElementById("win").classList.add("hidden");
-  resize(); seed(); buildHud(); cam.zoom=1; cam.x=stormCx; cam.y=stormCy;
+  resize(); seed(); buildHud();
+  const ba=BASE_ANG[type]; cam.zoom=1; cam.x=stormCx+Math.cos(ba)*maxR*0.6; cam.y=stormCy+Math.sin(ba)*maxR*0.6;  // kamera senin koloni köşene
   t=0; winner=null; mouse.active=false; joy.id=null;
-  toast(`<b>${LABEL[type]} sürüsü senin.</b><br><span>Avın <b style="color:${COLOR[BEATS[type]]}">${LABEL[BEATS[type]]}</b> — yedikçe sana katılır, sürün büyür. <kbd>Space</kbd> ile atılıp avı kap. Saha kapandığında <b>en baskın renk kazanır.</b></span>`,6000);
+  countdown=3.0; cdLastN=4;                         // 3 · 2 · 1 geri sayım, sonra başla
+}
+function onGo(){
+  beep(660,0.13,"triangle",0.05);
+  const type=playerType;
+  toast(`<b>${LABEL[type]} sürüsü senin.</b><br><span>Avın <b style="color:${COLOR[BEATS[type]]}">${LABEL[BEATS[type]]}</b> — yedikçe sana katılır. Çift dokun / <kbd>Space</kbd> ile atıl. Saha kapandığında <b>en baskın renk kazanır.</b></span>`,5000);
+}
+function drawCountdown(){
+  const n=Math.ceil(countdown); if(n<=0) return;
+  ctx.save();
+  ctx.fillStyle="rgba(233,223,202,.30)"; ctx.fillRect(0,0,W,H);
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  const frac=1-(countdown-(n-1));               // saniye içinde 0→1
+  const pop=1.16-0.16*frac;
+  ctx.globalAlpha=0.4+0.6*(1-frac);
+  ctx.fillStyle=COLOR[playerType]||SUMI; ctx.font="700 "+Math.round(120*pop)+"px "+SERIF;
+  ctx.fillText(""+n, W/2, H/2-6);
+  ctx.globalAlpha=1; ctx.fillStyle=KASUMI; ctx.font="14px "+SANS;
+  ctx.fillText("Sürün köşende — hazır ol", W/2, H/2+74);
+  ctx.restore();
 }
 function endGame(alive){ if(mode!=="play")return; mode="over"; running=false;
   document.getElementById("rotate").classList.remove("show");
