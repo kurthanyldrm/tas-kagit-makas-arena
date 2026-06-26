@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>TAŞ · KAĞIT · MAKAS — Arena</title>
+<style>
+  :root{
+    --washi:#e9dfca; --washi2:#e1d5bb; --panel:#f0e8d6; --line:#cdbf9f; --line2:#bcab86;
+    --sumi:#2b2723; --kasumi:#857b6e;
+    --tas:#2c2824; --kagit:#2a4d74; --makas:#b23a28; --shu:#b23a28;
+    --serif:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Songti SC","Source Han Serif SC",Georgia,"Times New Roman",serif;
+    --sans:"Hiragino Sans","Helvetica Neue",Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%; background:var(--washi); color:var(--sumi); overflow:hidden;
+    font-family:var(--sans);
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; touch-action:none;}
+  .mono{font-variant-numeric:tabular-nums; font-feature-settings:"tnum"}
+  #wrap{position:fixed; inset:0}
+  canvas{display:block; position:absolute; inset:0; z-index:0; cursor:none}
+
+  /* HUD */
+  #hud{position:absolute; left:0; right:0; top:0; z-index:2; display:flex;
+    align-items:flex-start; justify-content:space-between; padding:12px 14px; pointer-events:none;
+    padding-top:max(12px,env(safe-area-inset-top))}
+  .counts{display:flex; gap:8px}
+  .ctile{background:rgba(240,232,214,.78); backdrop-filter:blur(6px); border:1px solid var(--line);
+    border-radius:3px; padding:6px 10px; min-width:72px; box-shadow:0 2px 8px -4px rgba(60,45,25,.3)}
+  .ctile .name{font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--kasumi); display:flex; align-items:center}
+  .ctile .n{font-size:19px; font-weight:600; line-height:1.05; margin-top:1px; color:var(--sumi); font-variant-numeric:tabular-nums}
+  .ctile .bar{height:2px; margin-top:6px; background:rgba(43,39,35,.12); overflow:hidden}
+  .ctile .bar i{display:block; height:100%; width:0; transition:width .25s}
+  #storm{background:rgba(240,232,214,.78); backdrop-filter:blur(6px); border:1px solid var(--line);
+    border-radius:3px; padding:6px 11px; text-align:right; box-shadow:0 2px 8px -4px rgba(60,45,25,.3)}
+  #storm .lab{font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--kasumi)}
+  #storm .v{font-size:18px; font-weight:600; color:var(--shu); font-variant-numeric:tabular-nums}
+  #tri{position:absolute; right:14px; bottom:64px; z-index:2; width:104px; height:94px; pointer-events:none; opacity:.95}
+
+  #hint{position:absolute; left:0; right:0; bottom:0; z-index:2; display:flex; gap:16px;
+    justify-content:center; align-items:center; padding:10px; padding-bottom:max(10px,env(safe-area-inset-bottom));
+    font-size:12px; color:var(--kasumi); pointer-events:none}
+  #hint b{color:var(--sumi); font-weight:600}
+  #hint kbd{font-family:var(--sans); background:rgba(240,232,214,.8); border:1px solid var(--line);
+    border-bottom-width:2px; border-radius:4px; padding:1px 6px; color:var(--sumi); font-size:11px}
+
+  /* intro toast */
+  #toast{position:absolute; left:50%; top:16%; transform:translateX(-50%); z-index:3;
+    background:rgba(240,232,214,.94); border:1px solid var(--line2); border-radius:3px; padding:14px 18px;
+    text-align:center; max-width:350px; opacity:0; transition:opacity .5s; pointer-events:none;
+    box-shadow:0 10px 30px -12px rgba(60,45,25,.5); border-left:3px solid var(--shu)}
+  #toast.show{opacity:1}
+  #toast b{color:var(--sumi)} #toast span{color:var(--kasumi); font-size:13px; line-height:1.5}
+  #toast kbd{font-family:var(--sans); background:rgba(43,39,35,.07); border:1px solid var(--line); border-radius:4px; padding:0 5px; font-size:11px; color:var(--sumi)}
+
+  /* overlays — paper wash, live ink ecosystem faintly behind */
+  .overlay{position:absolute; inset:0; z-index:6; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:26px; padding:24px; text-align:center;
+    background:rgba(233,223,202,.84); backdrop-filter:blur(2px);
+    box-shadow:inset 0 0 240px 70px rgba(150,125,85,.22)}
+  .overlay.hidden{display:none}
+  .hero{display:flex; flex-direction:column; align-items:center; gap:8px; animation:rise .6s ease}
+  @keyframes rise{from{opacity:0; transform:translateY(10px)}to{opacity:1; transform:none}}
+  .kanji-row{display:flex; gap:18px; margin-bottom:6px}
+  .kanji-row .kj{font-family:var(--serif); font-size:clamp(40px,11vw,76px); line-height:1; font-weight:600}
+  .kanji-row .kj.tas{color:var(--tas)} .kanji-row .kj.kagit{color:var(--kagit)} .kanji-row .kj.makas{color:var(--makas)}
+  .eyebrow{font-size:11px; letter-spacing:.42em; text-transform:uppercase; color:var(--kasumi); margin-bottom:4px}
+  .title h1{font-family:var(--serif); font-size:clamp(26px,6vw,44px); font-weight:600; letter-spacing:.01em; line-height:1.04; color:var(--sumi)}
+  .title h1 span{color:var(--line2); font-weight:400}
+  .title p{margin-top:14px; color:var(--kasumi); font-size:14px; max-width:440px; line-height:1.62; margin-inline:auto}
+  .title p b{color:var(--sumi); font-weight:600}
+  #triHero{display:none}
+
+  .pick{display:flex; gap:13px; flex-wrap:wrap; justify-content:center}
+  .card{width:150px; background:var(--panel);
+    border:1px solid var(--line2); border-radius:3px; padding:15px 15px 14px; cursor:pointer;
+    text-align:left; color:var(--sumi); position:relative; overflow:hidden;
+    transition:transform .14s, box-shadow .14s, border-color .14s; pointer-events:auto;
+    box-shadow:0 3px 14px -8px rgba(60,45,25,.5)}
+  .card::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c)}
+  .card:hover,.card:focus-visible{transform:translateY(-5px); border-color:var(--c); outline:none;
+    box-shadow:0 16px 30px -14px rgba(60,45,25,.55)}
+  .card .glyph{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px}
+  .card .glyph .kj{font-family:var(--serif); font-size:34px; line-height:1; color:var(--c)}
+  .card .glyph .ic{width:26px; height:26px; display:block; color:var(--c); opacity:.85}
+  .ctile .name .tic, #counts .name .tic{font-family:var(--serif); font-weight:600; margin-right:5px; font-size:13px}
+  .card h3{font-family:var(--serif); font-size:18px; margin-bottom:10px; color:var(--sumi); font-weight:600}
+  .card .barrow{display:flex; align-items:center; gap:8px; margin:5px 0; font-size:10px; color:var(--kasumi)}
+  .card .barrow .lab{width:38px; text-transform:uppercase; letter-spacing:.08em}
+  .card .barrow .track{flex:1; height:4px; background:rgba(43,39,35,.1); overflow:hidden}
+  .card .barrow .track i{display:block; height:100%; background:var(--c)}
+  .card .eats{margin-top:11px; padding-top:9px; border-top:1px solid var(--line); font-size:11px;
+    display:flex; justify-content:space-between; color:var(--kasumi)}
+  .card .eats b{color:var(--c)}
+
+  .btn{pointer-events:auto; cursor:pointer; background:var(--sumi); color:var(--washi); border:none; border-radius:3px;
+    padding:12px 30px; font-family:var(--serif); font-size:15px; font-weight:600; letter-spacing:.02em;
+    transition:transform .1s, box-shadow .1s; box-shadow:0 8px 20px -10px rgba(43,39,35,.7)}
+  .btn:hover{transform:translateY(-2px)} .btn:focus-visible{outline:2px solid var(--sumi); outline-offset:3px}
+
+  #winName{font-family:var(--serif); font-size:clamp(34px,8vw,58px); font-weight:600; letter-spacing:.01em; line-height:1; animation:rise .5s ease; color:var(--sumi)}
+  #winSub{color:var(--kasumi); font-size:15px; margin-top:8px}
+  .results{display:flex; flex-direction:column; gap:9px; width:min(360px,84vw)}
+  .rrow{display:flex; align-items:center; gap:11px}
+  .rrow .rl{width:62px; font-family:var(--serif); font-size:13px; text-align:right; color:var(--sumi)}
+  .rrow .rt{flex:1; height:8px; background:rgba(43,39,35,.1); overflow:hidden}
+  .rrow .rt i{display:block; height:100%; transition:width .6s ease}
+  .rrow .rn{width:30px; font-size:12px; text-align:left; color:var(--kasumi); font-variant-numeric:tabular-nums}
+
+  /* rotate hint */
+  #rotate{position:absolute; inset:0; z-index:9; display:none; flex-direction:column; gap:14px;
+    align-items:center; justify-content:center; background:var(--washi); color:var(--kasumi); text-align:center; padding:30px}
+  #rotate.show{display:flex}
+  #rotate .ph{width:54px; height:90px; border:3px solid var(--kasumi); border-radius:8px; animation:tilt 1.6s ease-in-out infinite}
+  @keyframes tilt{0%,40%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
+
+  body.menu #hud, body.menu #tri, body.menu #hint, body.menu #ctrls{display:none}
+  #ctrls{position:absolute; right:14px; bottom:54px; z-index:3; display:flex; flex-direction:column; gap:9px; align-items:flex-end}
+  .cbtn{pointer-events:auto; cursor:pointer; background:rgba(240,232,214,.82); backdrop-filter:blur(6px);
+    border:1px solid var(--line2); color:var(--sumi); border-radius:3px; width:42px; height:42px; font-size:16px;
+    display:grid; place-items:center; transition:transform .1s, border-color .1s; box-shadow:0 2px 8px -4px rgba(60,45,25,.35)}
+  .cbtn:hover{transform:translateY(-2px)} .cbtn:active{transform:scale(.94)}
+  .cbtn.split{width:62px; height:54px; font-size:12px; font-weight:700; letter-spacing:.08em; font-family:var(--serif);
+    background:var(--shu); color:var(--washi); border-color:var(--shu)}
+  .menustat{margin-top:16px; font-size:12.5px; color:var(--kasumi); letter-spacing:.04em}
+  .menustat b{color:var(--sumi)}
+  /* detail (character grows in) */
+  #detail{background:rgba(233,223,202,.9); backdrop-filter:blur(3px)}
+  .detailcard{--c:var(--sumi); background:var(--panel); border:1px solid var(--line2); border-left:4px solid var(--c);
+    border-radius:4px; padding:28px 32px 26px; width:min(420px,90vw); text-align:center;
+    box-shadow:0 26px 64px -26px rgba(60,45,25,.6); transform-origin:center;
+    animation:grow .4s cubic-bezier(.18,.9,.28,1.18)}
+  @keyframes grow{from{opacity:0; transform:scale(.55)}to{opacity:1; transform:scale(1)}}
+  .dmark{font-family:var(--serif); font-size:clamp(64px,17vw,104px); line-height:1; color:var(--c); margin-bottom:2px}
+  #dName{font-family:var(--serif); font-size:30px; font-weight:600; color:var(--sumi); margin-bottom:6px}
+  .deats{font-size:12.5px; color:var(--kasumi); letter-spacing:.02em; margin-bottom:20px}
+  .deats b{color:var(--c)}
+  .dstats{display:flex; flex-direction:column; gap:10px; margin:0 auto 18px; max-width:300px; text-align:left}
+  .dstats .barrow{display:flex; align-items:center; gap:11px; font-size:11px; color:var(--kasumi)}
+  .dstats .lab{width:46px; text-transform:uppercase; letter-spacing:.08em}
+  .dstats .track{flex:1; height:6px; background:rgba(43,39,35,.1); overflow:hidden}
+  .dstats .track i{display:block; height:100%; background:var(--c)}
+  .eqnote{font-size:12.5px; color:var(--kasumi); line-height:1.6; background:rgba(43,39,35,.05);
+    border:1px solid var(--line); border-radius:4px; padding:11px 14px; max-width:330px; margin:0 auto; text-align:center}
+  .eqnote b{color:var(--sumi); font-weight:600}
+  .ddesc{font-size:13.5px; color:var(--kasumi); line-height:1.6; max-width:330px; margin:0 auto 24px}
+  .dbtns{display:flex; gap:10px; justify-content:center}
+  .btn.ghost{background:transparent; color:var(--sumi); border:1px solid var(--line2); box-shadow:none; font-family:var(--serif); font-weight:600}
+  /* hanko seal */
+  .seal{position:absolute; bottom:22px; right:22px; z-index:7; width:46px; height:46px; border:2px solid var(--shu);
+    border-radius:4px; color:var(--shu); font-family:var(--serif); font-size:11px; line-height:1.05; font-weight:600;
+    display:grid; place-items:center; text-align:center; opacity:.9; transform:rotate(-3deg); letter-spacing:.02em}
+  @media (max-width:540px){ .ctile{min-width:60px; padding:5px 8px} .ctile .n{font-size:17px}
+    #tri{width:84px; height:76px; bottom:54px} #hint{gap:11px; font-size:11px}
+    .kanji-row .kj{font-size:clamp(36px,13vw,60px)} .seal{display:none} }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important; animation:none!important} #rotate .ph{animation:none} }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="hud">
+    <div class="counts" id="counts"></div>
+    <div id="storm"><div class="lab">Alan</div><div class="v" id="stormV">—</div></div>
+  </div>
+  <svg id="tri" viewBox="0 0 104 94"></svg>
+  <div id="toast"></div>
+  <div id="hint">
+    <span>Sürükle <b>yönlendir</b></span>
+    <span><kbd>Space</kbd>/tıkla <b>atıl</b> (dash)</span>
+    <span><kbd>P</kbd> duraklat · <kbd>R</kbd> yeniden</span>
+    <span>Türün: <b id="hintType">—</b></span>
+  </div>
+  <div id="ctrls">
+    <button id="bMute" class="cbtn" title="Ses">🔊</button>
+    <button id="bPause" class="cbtn" title="Duraklat (P)">⏸</button>
+    <button id="bSplit" class="cbtn split" title="Atıl / dash (Space)">ATIL</button>
+  </div>
+
+  <div class="overlay" id="start">
+    <div class="hero">
+      <div class="kanji-row"><span class="kj tas">石</span><span class="kj kagit">紙</span><span class="kj makas">鋏</span></div>
+      <div class="title">
+        <div class="eyebrow">じゃんけん · arena</div>
+        <h1>Taş <span>·</span> Kağıt <span>·</span> Makas</h1>
+        <p>Bir tür seç ve sürüsünü yönet. Avladığın düşman <b>senin rengine döner</b>, sürüne katılır. Üç tür de <b>eşit güçte</b> — sadece kimi avladığın değişir. Saha daralır; kapandığında <b>en baskın renk kazanır.</b></p>
+        <div id="menuStat" class="menustat"></div>
+      </div>
+      <svg id="triHero" viewBox="0 0 124 132"></svg>
+    </div>
+    <div class="pick" id="pick"></div>
+    <div class="seal">石<br>紙鋏</div>
+  </div>
+
+  <div class="overlay hidden" id="detail">
+    <div class="detailcard" id="detailCard">
+      <div class="dmark" id="dKanji"></div>
+      <h2 id="dName"></h2>
+      <div class="deats" id="dEats"></div>
+      <div class="dstats" id="dStats"></div>
+      <p class="ddesc" id="dDesc"></p>
+      <div class="dbtns">
+        <button class="btn ghost" id="dBack">← Geri</button>
+        <button class="btn" id="dPlay">Oyna</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="win">
+    <div class="title"><div id="winName">—</div><div id="winSub"></div></div>
+    <div class="results" id="winResults"></div>
+    <button class="btn" id="again">Tekrar oyna</button>
+    <div class="seal">勝</div>
+  </div>
+
+  <div id="rotate"><div class="ph"></div><div>Telefonu <b>yan çevir</b> — yatay oynanır</div></div>
+</div>
+
+<script>
+(()=>{
+"use strict";
+
+// ---------- config ----------
+const TYPES=["tas","kagit","makas"];
+const LABEL={tas:"TAŞ",kagit:"KAĞIT",makas:"MAKAS"};
+const KANJI={tas:"石",kagit:"紙",makas:"鋏"};
+const COLOR={tas:"#2c2824", kagit:"#2a4d74", makas:"#b23a28"};   // sumi · ai (indigo) · shu (vermilion)
+const INKLT={tas:"#6f675c", kagit:"#5f86ad", makas:"#d98a6e"};   // lighter tints (bars/tri)
+const GLYPH={tas:"⬤",kagit:"▣",makas:"✂"};
+const EMBER="#b23a28";          // shu vermilion = seal / storm accent
+const WASHI="#e9dfca", SUMI="#2b2723", KASUMI="#8a8074", ACC="#b23a28";
+const SERIF='"Hiragino Mincho ProN","Yu Mincho",Georgia,serif', SANS='"Hiragino Sans","Helvetica Neue",system-ui,sans-serif';
+
+// color helpers
+function hx(h){ h=h.replace('#',''); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
+function shade(h,a){ const [r,g,b]=hx(h); const f=x=>Math.max(0,Math.min(255,Math.round(a<0?x*(1+a):x+(255-x)*a))); return `rgb(${f(r)},${f(g)},${f(b)})`; }
+function rgba(h,al){ const [r,g,b]=hx(h); return `rgba(${r},${g},${b},${al})`; }
+
+// prerendered ink-disc sprite per type (wet centre, dark rim, soft bleed edge)
+const INK={};
+function makeInk(hex){ const S=110,c=document.createElement("canvas"); c.width=c.height=S; const x=c.getContext("2d");
+  const g=x.createRadialGradient(S/2,S/2,S*0.06, S/2,S/2,S/2);
+  g.addColorStop(0,shade(hex,.16)); g.addColorStop(.5,hex); g.addColorStop(.82,shade(hex,-.22)); g.addColorStop(.93,shade(hex,-.30)); g.addColorStop(1,rgba(hex,0));
+  x.fillStyle=g; x.beginPath(); x.arc(S/2,S/2,S/2,0,6.283); x.fill(); return c; }
+for(const ty of TYPES) INK[ty]=makeInk(COLOR[ty]);
+
+// washi paper texture (warm fibre grain), built once
+let washiPat=null;
+function makeWashi(g){ const S=200,c=document.createElement("canvas"); c.width=c.height=S; const x=c.getContext("2d");
+  x.fillStyle=WASHI; x.fillRect(0,0,S,S);
+  const img=x.getImageData(0,0,S,S), d=img.data;
+  for(let i=0;i<d.length;i+=4){ const n=(Math.random()-.5)*16; d[i]+=n+2; d[i+1]+=n; d[i+2]+=n-3; }
+  x.putImageData(img,0,0);
+  x.globalAlpha=.05; x.strokeStyle="#8a6a44";                 // faint long fibres
+  for(let i=0;i<60;i++){ x.beginPath(); const yy=Math.random()*S; x.moveTo(0,yy); x.lineTo(S,yy+(Math.random()-.5)*8); x.stroke(); }
+  x.globalAlpha=1; return g.createPattern(c,"repeat"); }
+const BEATS={tas:"makas",makas:"kagit",kagit:"tas"};
+const ADV=1.45;
+
+const STAT={
+  tas:   {start:20,count:24,base:96,split:34,accel:7.0},
+  kagit: {start:20,count:24,base:96,split:34,accel:7.0},
+  makas: {start:20,count:24,base:96,split:34,accel:7.0},
+};
+const GAIN=0.12;   // mass the eater takes when converting (rest stays on the flipped blob)
+const WORLD={w:2200,h:1400};
+const RK=2.3, ABSORB=0.97, KABS=1.2, EAT_EDGE=1.10, CAP=480, MIN_MASS=5;
+const GRACE=24, SHRINK=100, STORM_DPS=7;
+const JOY_DEAD=10, JOY_MAX=72;   // joystick deadzone + max radius (screen px)
+const DASH=600;                          // dash impulse
+const DASH_CD={tas:3.0, kagit:0.8, makas:1.3};   // dash cooldown per type (taş çok seyrek, kağıt sık)
+
+// ---------- type icons (clear, distinct SVG) ----------
+function iconInner(ink,halo,type){ const H=halo;
+  if(type==="tas"){ const body="M24,56 L34,36 L52,30 L70,38 L77,57 L63,72 L37,72 Z";
+    const fac="M52,30 L46,50 L24,56 M52,30 L60,49 L77,57 M46,50 L60,49 M46,50 L42,72 M60,49 L65,72";
+    return (H?`<path d="${body}" fill="none" stroke="${H}" stroke-width="11" stroke-linejoin="round"/>`:"")
+      +`<path d="${body}" fill="${ink}" stroke="${ink}" stroke-width="3" stroke-linejoin="round"/>`
+      +`<path d="${fac}" fill="none" stroke="${H||'#fff'}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" opacity=".45"/>`; }
+  if(type==="kagit"){ const sheet="M33,20 L60,20 L76,36 L76,80 L33,80 Z", fold="M60,20 L60,36 L76,36";
+    const lines='<path d="M41,49 H65"/><path d="M41,59 H65"/><path d="M41,69 H57"/>';
+    return (H?`<path d="${sheet}" fill="none" stroke="${H}" stroke-width="12" stroke-linejoin="round"/>`:"")
+      +`<g fill="none" stroke="${ink}" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"><path d="${sheet}"/><path d="${fold}"/><g stroke-width="5">${lines}</g></g>`; }
+  const b1="M30,73 L70,29", b2="M70,73 L30,29", loops='<circle cx="30" cy="75" r="7.5"/><circle cx="70" cy="75" r="7.5"/>';
+  return (H?`<g fill="none" stroke="${H}" stroke-width="13" stroke-linecap="round"><path d="${b1}"/><path d="${b2}"/>${loops}</g>`:"")
+    +`<g fill="none" stroke="${ink}" stroke-width="6" stroke-linecap="round"><path d="${b1}"/><path d="${b2}"/>${loops}</g>`;
+}
+const ICON={};
+(function(){ for(const ty of TYPES){ const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${iconInner("#ece3d0","rgba(20,16,12,.55)",ty)}</svg>`;
+  const img=new Image(); img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg); ICON[ty]=img; } })();
+function iconCard(ty){ return `<svg class="ic" viewBox="0 0 100 100">${iconInner("currentColor",null,ty)}</svg>`; }
+
+// ---------- state ----------
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+let W=0,H=0,DPR=1;
+let blobs=[], parts=[], rings=[], grid=new Map(), cell=140;
+const cam={x:WORLD.w/2,y:WORLD.h/2,zoom:1,sx:0,sy:0,shake:0};
+const mouse={sx:0,sy:0,active:false};
+const joy={id:null,ox:0,oy:0,dx:0,dy:0}; let usingTouch=false, paused=false;
+let actx=null, muted=false, lastEatSnd=0;
+let bestTime=0, streak=0, dashCd=0;
+let playerType=null, running=false, t=0, last=0, winner=null;
+let mode="menu", amb=0;
+let stormCx=WORLD.w/2, stormCy=WORLD.h/2, maxR=Math.min(WORLD.w,WORLD.h)*0.5;
+
+const mult=(a,b)=> a===b?1:(BEATS[a]===b?ADV:1/ADV);
+const radius=m=>Math.sqrt(m)*RK;
+const refR=Math.sqrt(20)*RK;
+
+// ---------- layout ----------
+function resize(){
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  W=window.innerWidth; H=window.innerHeight;
+  cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+"px"; cv.style.height=H+"px";
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const r=document.getElementById("rotate");
+  const portraitPhone=("ontouchstart" in window)&&H>W&&W<700;
+  r.classList.toggle("show", portraitPhone && running);
+}
+window.addEventListener("resize",resize);
+window.addEventListener("orientationchange",()=>setTimeout(resize,200));
+
+// ---------- coords ----------
+const w2sx=wx=>(wx-cam.x)*cam.zoom+W/2+cam.sx;
+const w2sy=wy=>(wy-cam.y)*cam.zoom+H/2+cam.sy;
+const s2wx=sx=>(sx-W/2)/cam.zoom+cam.x;
+const s2wy=sy=>(sy-H/2)/cam.zoom+cam.y;
+
+// ---------- spawn ----------
+function spawn(type,x,y,m){ blobs.push({type,x,y,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,mass:m,sq:0,rt:Math.random()*2}); }
+function seed(){
+  blobs=[]; parts=[]; rings=[];
+  for(const ty of TYPES){ const st=STAT[ty];
+    for(let i=0;i<st.count;i++){
+      const a=Math.random()*Math.PI*2, r=Math.random()*maxR*0.85;
+      spawn(ty, stormCx+Math.cos(a)*r, stormCy+Math.sin(a)*r, st.start*(0.8+Math.random()*0.4));
+    }
+  }
+  for(let i=blobs.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; const tmp=blobs[i]; blobs[i]=blobs[j]; blobs[j]=tmp; } // interleave types -> no index bias
+}
+
+// ---------- grid ----------
+function rebuild(){ grid.clear();
+  for(let i=0;i<blobs.length;i++){ const b=blobs[i]; const k=((b.x/cell)|0)+","+((b.y/cell)|0);
+    let a=grid.get(k); if(!a){a=[];grid.set(k,a);} a.push(i); } }
+function near(b,fn){ const gx=(b.x/cell)|0, gy=(b.y/cell)|0;
+  for(let ox=-1;ox<=1;ox++)for(let oy=-1;oy<=1;oy++){ const a=grid.get((gx+ox)+","+(gy+oy)); if(a)for(const j of a)fn(j); } }
+
+// ---------- fx ----------
+function burst(x,y,color,n){ for(let i=0;i<n;i++){ const a=Math.random()*6.283, sp=40+Math.random()*150;
+  parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0,max:.45+Math.random()*.35,r:1.5+Math.random()*2.5,color}); }
+  if(parts.length>500) parts.splice(0,parts.length-500); }
+function ring(x,y,r,color){ rings.push({x,y,r,max:r*2.2,life:0,dur:.35,color}); }
+function shake(a){ cam.shake=Math.min(14,cam.shake+a); }
+
+// ---------- update ----------
+function update(dt){
+  rebuild();
+  const safeR=currentSafeR();
+  // population (for AI restraint: don't fully wipe your own food)
+  const pop={tas:0,kagit:0,makas:0}; for(const b of blobs) pop[b.type]++;
+  // player aim: ONE model. joystick = analog direction+throttle; mouse = move toward world point (eases near it)
+  const aimX=s2wx(mouse.sx), aimY=s2wy(mouse.sy);
+  const SETTLE=55/cam.zoom;                 // world distance under which blobs ease to a stop
+  let pAim=false, joyMode=false, pjx=0, pjy=0;
+  if(usingTouch && joy.id!==null){ const l=Math.hypot(joy.dx,joy.dy);
+    if(l>JOY_DEAD){ const thr=Math.min(1,(l-JOY_DEAD)/(JOY_MAX-JOY_DEAD)); pjx=joy.dx/l*thr; pjy=joy.dy/l*thr; pAim=true; joyMode=true; } }
+  else if(mouse.active){ pAim=true; }
+
+  // steering
+  for(let i=0;i<blobs.length;i++){
+    const b=blobs[i], st=STAT[b.type]; let dx2=0,dy2=0;
+    if(b.type===playerType && pAim){
+      if(joyMode){ dx2=pjx; dy2=pjy; }                                    // analog vector (length 0..1 = throttle)
+      else { const dx=aimX-b.x, dy=aimY-b.y, d=Math.hypot(dx,dy)||1; const thr=Math.min(1,d/SETTLE); dx2=dx/d*thr; dy2=dy/d*thr; }
+    } else {
+      let n=0; const preyType=BEATS[b.type];
+      const restraint = pop[preyType]<6 ? 0.25 : 1; // ease off when your food is scarce
+      near(b,j=>{ if(j===i||n>14) return; const o=blobs[j]; if(o.type===b.type) return;
+        const dx=o.x-b.x, dy=o.y-b.y, d=Math.hypot(dx,dy); if(d>190||d<.001) return; n++;
+        const adv=mult(b.type,o.type), w=1/(d+8);
+        if(b.mass*adv>o.mass*EAT_EDGE){ const g=(o.type===preyType?restraint:1); dx2+=dx/d*w*g; dy2+=dy/d*w*g; }
+        else if(o.mass>b.mass*adv*EAT_EDGE){ const f=w*(o.mass/(b.mass*adv)); dx2-=dx/d*f; dy2-=dy/d*f; } });
+      const ax=b.x-stormCx, ay=b.y-stormCy, dc=Math.hypot(ax,ay);
+      if(dc>safeR-50){ const w=2.4; dx2-=ax/(dc||1)*w; dy2-=ay/(dc||1)*w; }
+      if(dx2===0&&dy2===0){ dx2=(stormCx-b.x)*.001; dy2=(stormCy-b.y)*.001; }
+      const dl=Math.hypot(dx2,dy2)||1; dx2/=dl; dy2/=dl;
+    }
+    const ms=st.base*Math.pow(refR/radius(b.mass),0.5);
+    const k=Math.min(1,st.accel*dt);
+    b.vx+=(dx2*ms-b.vx)*k; b.vy+=(dy2*ms-b.vy)*k;
+  }
+
+  // integrate + world bounds
+  for(const b of blobs){ b.x+=b.vx*dt; b.y+=b.vy*dt; const r=radius(b.mass);
+    if(b.x<r){b.x=r;b.vx=Math.abs(b.vx)*.4;} if(b.x>WORLD.w-r){b.x=WORLD.w-r;b.vx=-Math.abs(b.vx)*.4;}
+    if(b.y<r){b.y=r;b.vy=Math.abs(b.vy)*.4;} if(b.y>WORLD.h-r){b.y=WORLD.h-r;b.vy=-Math.abs(b.vy)*.4;}
+    b.sq+=( (Math.hypot(b.vx,b.vy)) - b.sq)*Math.min(1,dt*8);
+  }
+
+  // combat — eating CONVERTS the prey to the eater's type (it joins the swarm)
+  rebuild(); const dead=new Set(), flipped=new Set();
+  for(let i=0;i<blobs.length;i++){ if(dead.has(i)||flipped.has(i))continue; const b=blobs[i];
+    near(b,j=>{ if(j<=i||dead.has(j)||flipped.has(j)||flipped.has(i))return; const o=blobs[j];
+      const dx=o.x-b.x, dy=o.y-b.y, d=Math.hypot(dx,dy), rb=radius(b.mass), ro=radius(o.mass);
+      if(b.type===o.type){ const ov=rb+ro-d; if(ov>0&&d>.001){ const p=ov*0.04; b.x-=dx/d*p;b.y-=dy/d*p;o.x+=dx/d*p;o.y+=dy/d*p; } return; }
+      if(d>Math.max(rb,ro)*0.78) return;
+      const adv=mult(b.type,o.type);
+      if(b.mass*adv>o.mass*EAT_EDGE){ convert(b,o); flipped.add(j); }
+      else if(o.mass>b.mass*adv*EAT_EDGE){ convert(o,b); flipped.add(i); } });
+  }
+  // storm dmg
+  for(let i=0;i<blobs.length;i++){ const b=blobs[i], dc=Math.hypot(b.x-stormCx,b.y-stormCy);
+    if(dc>safeR){ b.mass-=STORM_DPS*dt*(1+(dc-safeR)/120); if(Math.random()<dt*6) parts.push({x:b.x,y:b.y,vx:0,vy:-30,life:0,max:.5,r:2,color:EMBER}); }
+    if(b.mass<MIN_MASS) dead.add(i); }
+  if(dead.size) blobs=blobs.filter((_,i)=>!dead.has(i));
+
+  // particles + rings
+  for(const p of parts){ p.life+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=.92; p.vy*=.92; }
+  parts=parts.filter(p=>p.life<p.max);
+  for(const r of rings){ r.life+=dt; }
+  rings=rings.filter(r=>r.life<r.dur);
+
+  updateCamera(dt);
+  if(mode==="menu") ambientReseed();
+  if(mode==="play") checkWin(safeR);
+}
+
+function initAudio(){ if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx=null; } } }
+function beep(freq,dur,type,gain){ if(!actx||muted) return;
+  const o=actx.createOscillator(), g=actx.createGain(); o.type=type||"sine"; o.frequency.value=freq;
+  const t0=actx.currentTime; g.gain.setValueAtTime(gain||0.04,t0); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0+dur+0.02); }
+function convert(big,small){
+  const wasMine = small.type===playerType;     // you just lost a blob
+  big.mass += small.mass*GAIN;                  // eater takes a small cut
+  small.mass *= (1-GAIN);
+  burst(small.x,small.y,COLOR[small.type], 4);  // old colour puff
+  small.type = big.type;                        // FLIP to eater's type
+  small.sq = Math.max(small.sq,170);
+  burst(small.x,small.y,COLOR[big.type], 6);    // new colour bloom
+  ring(small.x,small.y,radius(small.mass)*1.2,COLOR[big.type]);
+  if(big.type===playerType){ const now=performance.now(); if(now-lastEatSnd>50){ lastEatSnd=now; beep(380+Math.random()*120,0.08,"triangle",0.03); } shake(2); }
+  else if(wasMine){ ring(small.x,small.y,radius(small.mass)*1.3,EMBER); shake(2); }
+}
+
+function currentSafeR(){ if(mode!=="play") return maxR; if(t<GRACE) return maxR; const k=Math.min(1,(t-GRACE)/SHRINK); return maxR*(1-k)+18; }
+
+function ambientReseed(){
+  const cnt={tas:0,kagit:0,makas:0}; for(const b of blobs) cnt[b.type]++;
+  for(const ty of TYPES){ if(cnt[ty]<6 && blobs.length<74){ for(let i=0;i<4;i++){
+    const a=Math.random()*6.283, r=Math.random()*maxR*0.8;
+    spawn(ty, stormCx+Math.cos(a)*r, stormCy+Math.sin(a)*r, STAT[ty].start*(0.7+Math.random()*0.6)); } } }
+}
+
+function updateCamera(dt){
+  if(mode==="menu"){
+    const tx=stormCx+Math.cos(amb*0.05)*maxR*0.42, ty=stormCy+Math.sin(amb*0.043)*maxR*0.34;
+    cam.x+=(tx-cam.x)*Math.min(1,dt*1.1); cam.y+=(ty-cam.y)*Math.min(1,dt*1.1);
+    cam.zoom+=(0.82-cam.zoom)*Math.min(1,dt*1.5);
+  } else {
+    // agar.io camera: mass-weighted centroid of YOUR blobs; zoom fits the swarm's spread (smooth, no snapping)
+    let mx=0,my=0,M=0,maxM=0,n=0;
+    for(const b of blobs) if(b.type===playerType){ mx+=b.x*b.mass; my+=b.y*b.mass; M+=b.mass; n++; if(b.mass>maxM)maxM=b.mass; }
+    if(M>0){
+      const cx=mx/M, cy=my/M;
+      let v=0; for(const b of blobs) if(b.type===playerType){ const ddx=b.x-cx, ddy=b.y-cy; v+=b.mass*(ddx*ddx+ddy*ddy); }
+      const rms=Math.sqrt(v/M);                                   // mass-weighted spread (outliers/new spawns barely count)
+      const need=Math.max(rms*2.0 + radius(maxM)*3.2 + Math.min(n,90)*3.4 + 200, 300); // fit spread + biggest + crowd
+      const tz=Math.max(0.46, Math.min(1.5, (Math.min(W,H)/2)/need));
+      cam.x+=(cx-cam.x)*Math.min(1,dt*6);
+      cam.y+=(cy-cam.y)*Math.min(1,dt*6);
+      cam.zoom+=(tz-cam.zoom)*Math.min(1,dt*2.2);                 // zoom eases slowly -> no nausea
+    }
+  }
+  // clamp camera so the view never leaves the world
+  const hw=(W/2)/cam.zoom, hh=(H/2)/cam.zoom;
+  cam.x = hw>=WORLD.w/2 ? WORLD.w/2 : Math.max(hw, Math.min(WORLD.w-hw, cam.x));
+  cam.y = hh>=WORLD.h/2 ? WORLD.h/2 : Math.max(hh, Math.min(WORLD.h-hh, cam.y));
+  cam.shake*=Math.pow(0.0008,dt);
+  cam.sx=(Math.random()-.5)*cam.shake; cam.sy=(Math.random()-.5)*cam.shake;
+}
+
+function checkWin(safeR){
+  const alive={tas:0,kagit:0,makas:0}, mass={tas:0,kagit:0,makas:0};
+  for(const b of blobs){ alive[b.type]++; mass[b.type]+=b.mass; }
+  const surv=TYPES.filter(ty=>alive[ty]>0);
+  const dom=()=> TYPES.reduce((a,b)=> (alive[a]!==alive[b] ? (alive[a]>alive[b]?a:b) : (mass[a]>=mass[b]?a:b)) ); // most blobs, mass breaks ties
+  if(mode==="play" && playerType && alive[playerType]===0){   // your colour wiped out -> you lose
+    winner=dom(); return endGame(alive);
+  }
+  if(surv.length<=1){ winner=surv[0]||playerType; return endGame(alive); }   // only one colour left
+  if(safeR<=20){ winner=dom(); return endGame(alive); }                       // arena closed -> most dominant colour wins
+}
+
+function playerDash(){ if(mode!=="play"||paused||dashCd>0)return;
+  let jx=0,jy=0,joyOn=false;
+  if(usingTouch && (joy.dx||joy.dy)){ const l=Math.hypot(joy.dx,joy.dy)||1; jx=joy.dx/l; jy=joy.dy/l; joyOn=true; }
+  const tx=s2wx(mouse.sx),ty=s2wy(mouse.sy);
+  let any=false;
+  for(const b of blobs){ if(b.type!==playerType)continue;
+    let dx,dy; if(joyOn){ dx=jx; dy=jy; } else { dx=tx-b.x; dy=ty-b.y; const d=Math.hypot(dx,dy)||1; dx/=d; dy/=d; }
+    b.vx+=dx*DASH; b.vy+=dy*DASH; b.sq=Math.max(b.sq,170);
+    burst(b.x-dx*radius(b.mass),b.y-dy*radius(b.mass),COLOR[b.type],3); any=true; }
+  if(any){ dashCd=DASH_CD[playerType]||1.2; shake(4); beep(300,0.14,"sawtooth",0.035); }
+}
+
+// ---------- render ----------
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const safeR=currentSafeR();
+  // world rect clip
+  const z=cam.zoom;
+  const vx0=s2wx(0), vy0=s2wy(0), vx1=s2wx(W), vy1=s2wy(H);
+  // floor (washi paper)
+  const bx=w2sx(0),by=w2sy(0),bw=WORLD.w*z,bh=WORLD.h*z;
+  if(!washiPat) washiPat=makeWashi(ctx);
+  ctx.fillStyle=WASHI; ctx.fillRect(bx,by,bw,bh);
+  ctx.save(); ctx.beginPath(); ctx.rect(bx,by,bw,bh); ctx.clip();
+  ctx.fillStyle=washiPat; ctx.fillRect(0,0,W,H);
+  ctx.restore();
+  // faint manuscript-paper grid (genkō yōshi)
+  ctx.strokeStyle="rgba(120,90,60,.07)"; ctx.lineWidth=1; const G=80;
+  ctx.beginPath();
+  for(let gx=Math.floor(vx0/G)*G; gx<=vx1; gx+=G){ const x=w2sx(gx); ctx.moveTo(x,Math.max(by,0)); ctx.lineTo(x,Math.min(by+bh,H)); }
+  for(let gy=Math.floor(vy0/G)*G; gy<=vy1; gy+=G){ const y=w2sy(gy); ctx.moveTo(Math.max(bx,0),y); ctx.lineTo(Math.min(bx+bw,W),y); }
+  ctx.stroke();
+  // soft ink border (paper edge)
+  ctx.strokeStyle="rgba(43,39,35,.5)"; ctx.lineWidth=2.5; ctx.strokeRect(bx,by,bw,bh);
+  ctx.strokeStyle="rgba(43,39,35,.14)"; ctx.lineWidth=8; ctx.strokeRect(bx,by,bw,bh);
+
+  // storm = ink soaking inward from outside the safe circle (subtle, warm)
+  const scx=w2sx(stormCx), scy=w2sy(stormCy), srr=safeR*z;
+  ctx.save(); ctx.beginPath(); ctx.rect(bx,by,bw,bh); ctx.clip();
+  const ig=ctx.createRadialGradient(scx,scy,Math.max(0,srr*0.82),scx,scy,srr+170*z);
+  ig.addColorStop(0,"rgba(74,58,40,0)"); ig.addColorStop(.62,"rgba(74,58,40,.10)"); ig.addColorStop(1,"rgba(48,37,26,.34)");
+  ctx.fillStyle=ig; ctx.fillRect(bx,by,bw,bh); ctx.restore();
+  // brushy safe-zone edge
+  ctx.beginPath(); ctx.arc(scx,scy,srr,0,6.283); ctx.strokeStyle="rgba(74,58,40,.4)"; ctx.lineWidth=1.5; ctx.setLineDash([6,7]); ctx.stroke(); ctx.setLineDash([]);
+
+  // rings (pop)
+  for(const r of rings){ const k=r.life/r.dur; ctx.beginPath();
+    ctx.arc(w2sx(r.x),w2sy(r.y),(r.r+(r.max-r.r)*k)*z,0,6.283);
+    ctx.strokeStyle=r.color; ctx.globalAlpha=(1-k)*.7; ctx.lineWidth=2; ctx.stroke(); ctx.globalAlpha=1; }
+
+  // blobs (culled, squash/stretch, glyphs, queen highlight)
+  let queen=null,qm=0; if(mode==="play"){ for(const b of blobs) if(b.type===playerType&&b.mass>qm){qm=b.mass;queen=b;} }
+  const ph=0.5+0.5*Math.sin((mode==="play"?t:amb)*6);
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  for(const b of blobs){ const sx=w2sx(b.x), sy=w2sy(b.y), r=radius(b.mass)*z;
+    if(sx<-r-10||sx>W+r+10||sy<-r-10||sy>H+r+10) continue;
+    const sp=Math.min(.32, b.sq/650), ang=Math.atan2(b.vy,b.vx);
+    ctx.save(); ctx.translate(sx,sy); ctx.rotate(ang); ctx.scale(1+sp,1-sp*0.8);
+    const d=r*2.16; ctx.drawImage(INK[b.type], -d/2,-d/2, d,d);          // ink brushmark
+    ctx.restore();
+    if(r>7 && ICON[b.type] && ICON[b.type].complete){ const s=r*1.5; ctx.globalAlpha=.9; ctx.drawImage(ICON[b.type], sx-s/2, sy-s/2, s, s); ctx.globalAlpha=1; }
+    if(b.type===playerType){ ctx.beginPath(); ctx.arc(sx,sy,r+2.5,0,6.283); ctx.strokeStyle=rgba(WASHI,.85); ctx.lineWidth=1.6; ctx.stroke(); }
+    if(b===queen){ ctx.beginPath(); ctx.arc(sx,sy,r+5+ph*3,0,6.283); ctx.strokeStyle=rgba(WASHI,.95); ctx.lineWidth=2.4; ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx,sy,r+5+ph*3,0,6.283); ctx.strokeStyle=rgba(EMBER,.5); ctx.lineWidth=1; ctx.stroke(); }
+  }
+
+  // particles
+  for(const p of parts){ const k=p.life/p.max; ctx.beginPath();
+    ctx.arc(w2sx(p.x),w2sy(p.y),p.r*z*(1-k*.5),0,6.283); ctx.fillStyle=p.color; ctx.globalAlpha=(1-k)*.85; ctx.fill(); }
+  ctx.globalAlpha=1;
+
+  // queen off-screen pointer
+  if(mode==="play"&&queen){ const sx=w2sx(queen.x), sy=w2sy(queen.y);
+    if(sx<8||sx>W-8||sy<8||sy>H-8){ const a=Math.atan2(sy-H/2,sx-W/2), R=Math.min(W,H)/2-26;
+      const ex=W/2+Math.cos(a)*R, ey=H/2+Math.sin(a)*R;
+      ctx.save(); ctx.translate(ex,ey); ctx.rotate(a); ctx.fillStyle=COLOR[playerType];
+      ctx.beginPath(); ctx.moveTo(11,0); ctx.lineTo(-6,-7); ctx.lineTo(-6,7); ctx.closePath(); ctx.fill(); ctx.restore(); } }
+
+  // joystick (touch) — base + deadzone + knob
+  if(usingTouch&&joy.id!==null){ const l=Math.hypot(joy.dx,joy.dy), live=l>JOY_DEAD;
+    ctx.lineWidth=2; ctx.strokeStyle="rgba(239,230,210,.4)";
+    ctx.beginPath(); ctx.arc(joy.ox,joy.oy,JOY_MAX,0,6.283); ctx.stroke();
+    ctx.strokeStyle="rgba(239,230,210,.18)";
+    ctx.beginPath(); ctx.arc(joy.ox,joy.oy,JOY_DEAD,0,6.283); ctx.stroke();
+    const kx=joy.ox+joy.dx, ky=joy.oy+joy.dy;
+    ctx.beginPath(); ctx.moveTo(joy.ox,joy.oy); ctx.lineTo(kx,ky); ctx.strokeStyle="rgba(239,230,210,.3)"; ctx.stroke();
+    ctx.beginPath(); ctx.arc(kx,ky,24,0,6.283); ctx.fillStyle=live?(COLOR[playerType]||"#eee"):"rgba(239,230,210,.4)"; ctx.globalAlpha=live?.7:.4; ctx.fill(); ctx.globalAlpha=1;
+    ctx.lineWidth=2; ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.beginPath(); ctx.arc(kx,ky,24,0,6.283); ctx.stroke(); }
+
+  // desktop cursor
+  if(mouse.active&&mode==="play"&&!usingTouch){ ctx.beginPath(); ctx.arc(mouse.sx,mouse.sy,7,0,6.283);
+    ctx.strokeStyle=COLOR[playerType]; ctx.lineWidth=2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(mouse.sx,mouse.sy,2,0,6.283); ctx.fillStyle=COLOR[playerType]; ctx.fill(); }
+
+  // paused banner
+  if(mode==="play"&&paused){ ctx.fillStyle="rgba(233,223,202,.72)"; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=SUMI; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font="600 30px "+SERIF;
+    ctx.fillText("休  DURAKLATILDI",W/2,H/2-6); ctx.font="13px "+SANS; ctx.fillStyle=KASUMI; ctx.fillText("P ile devam · R yeniden",W/2,H/2+24); }
+}
+
+// ---------- HUD ----------
+const countsEl=document.getElementById("counts"), stormV=document.getElementById("stormV"),
+      triEl=document.getElementById("tri"), triHeroEl=document.getElementById("triHero");
+let tiles={};
+function buildHud(){ countsEl.innerHTML=""; tiles={};
+  for(const ty of TYPES){ const d=document.createElement("div");
+    d.className="ctile"+(ty===playerType?" me":""); d.style.color=COLOR[ty];
+    d.innerHTML=`<div class="name"><span class="tic" style="color:${COLOR[ty]}">${KANJI[ty]}</span>${LABEL[ty]}</div><div class="n mono">0</div><div class="bar"><i style="background:${COLOR[ty]}"></i></div>`;
+    countsEl.appendChild(d); tiles[ty]={n:d.querySelector(".n"),bar:d.querySelector("i")}; } }
+const TRI_CORNER={tas:[52,14],kagit:[16,80],makas:[88,80]};
+const TRI_HERO={tas:[62,22],kagit:[22,106],makas:[102,106]};
+function renderTri(el,P,rmin,rmax){ const cnt={tas:0,kagit:0,makas:0}; let mx=1;
+  for(const b of blobs) cnt[b.type]++; for(const ty of TYPES) mx=Math.max(mx,cnt[ty]);
+  const mid=`m${rmax|0}`; let s='';
+  for(const a of TYPES){ const b=BEATS[a],[x1,y1]=P[a],[x2,y2]=P[b];
+    s+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(148,136,122,.3)" stroke-width="1.4" marker-end="url(#${mid})"/>`; }
+  for(const ty of TYPES){ const [x,y]=P[ty], r=rmin+(rmax-rmin)*(cnt[ty]/mx);
+    s+=`<circle cx="${x}" cy="${y}" r="${r}" fill="${COLOR[ty]}" opacity=".92"/>`;
+    if(ty===playerType) s+=`<circle cx="${x}" cy="${y}" r="${r+3}" fill="none" stroke="#fff" stroke-width="1.3" opacity=".6"/>`; }
+  el.innerHTML=`<defs><marker id="${mid}" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="rgba(148,136,122,.5)"/></marker></defs>${s}`; }
+function drawTri(){ renderTri(triEl,TRI_CORNER,5,16); }
+function updateHud(){ const cnt={tas:0,kagit:0,makas:0},mass={tas:0,kagit:0,makas:0}; let tot=0;
+  for(const b of blobs){ cnt[b.type]++; mass[b.type]+=b.mass; tot+=b.mass; }
+  for(const ty of TYPES){ tiles[ty].n.textContent=cnt[ty]; tiles[ty].bar.style.width=(tot?mass[ty]/tot*100:0)+"%"; }
+  stormV.textContent=Math.round(currentSafeR()/maxR*100)+"%"; drawTri();
+  bSplit.style.opacity = dashCd>0 ? 0.4 : 1; }
+
+// ---------- toast ----------
+const toastEl=document.getElementById("toast");
+function toast(html,dur){ toastEl.innerHTML=html; toastEl.classList.add("show");
+  clearTimeout(toast._t); toast._t=setTimeout(()=>toastEl.classList.remove("show"),dur); }
+
+// ---------- loop ----------
+function loop(ts){
+  if(!last) last=ts; let dt=(ts-last)/1000; last=ts; dt=Math.min(dt,0.05);
+  if(mode==="menu"){ amb+=dt; update(dt); draw(); renderTri(triHeroEl,TRI_HERO,8,24); }
+  else if(mode==="play"){ if(!paused){ t+=dt; if(dashCd>0)dashCd=Math.max(0,dashCd-dt); update(dt); } draw(); updateHud(); }
+  // mode==="over": freeze (last frame stays under the results overlay)
+  requestAnimationFrame(loop);
+}
+function togglePause(){ if(mode!=="play")return; paused=!paused; document.getElementById("bPause").textContent=paused?"▶":"⏸"; }
+function fmt(s){ s=Math.max(0,Math.floor(s)); return (s/60|0)+":"+String(s%60).padStart(2,"0"); }
+function updateMenuStat(){ const el=document.getElementById("menuStat");
+  el.innerHTML = bestTime>0 ? `En iyi süre <b>${fmt(bestTime)}</b>${streak>1?` · Seri <b>${streak}</b>`:""}` : ""; }
+
+// ---------- flow ----------
+function startGame(type){ playerType=type; mode="play"; running=true; paused=false; initAudio();
+  document.body.classList.remove("menu");
+  document.getElementById("bPause").textContent="⏸";
+  document.getElementById("hintType").textContent=LABEL[type];
+  document.getElementById("hintType").style.color=COLOR[type];
+  document.getElementById("start").classList.add("hidden");
+  document.getElementById("win").classList.add("hidden");
+  resize(); seed(); buildHud(); cam.zoom=1; cam.x=stormCx; cam.y=stormCy;
+  t=0; winner=null; mouse.active=false; joy.id=null;
+  toast(`<b>${LABEL[type]} sürüsü senin.</b><br><span>Avın <b style="color:${COLOR[BEATS[type]]}">${LABEL[BEATS[type]]}</b> — yedikçe sana katılır, sürün büyür. <kbd>Space</kbd> ile atılıp avı kap. Saha kapandığında <b>en baskın renk kazanır.</b></span>`,6000);
+}
+function endGame(alive){ if(mode!=="play")return; mode="over"; running=false;
+  document.getElementById("rotate").classList.remove("show");
+  const playerAlive = alive ? alive[playerType]>0 : true;
+  const won = winner===playerType;
+  const nm=document.getElementById("winName"), sub=document.getElementById("winSub");
+  nm.textContent=KANJI[winner]+"  "+LABEL[winner]+" KAZANDI"; nm.style.color=COLOR[winner];
+  if(won){ sub.textContent="Sahayı sen ele geçirdin — en baskın renk seninki."; streak++; winChime(); }
+  else if(!playerAlive){ sub.textContent=`Senin türün (${LABEL[playerType]}) elendi.`; streak=0; beep(150,0.5,"sine",0.05); }
+  else { sub.textContent=`${LABEL[winner]} baskın çıktı — saha daraldığında en güçlü oydu.`; streak=0; beep(150,0.5,"sine",0.05); }
+  if(t>bestTime) bestTime=t;
+  const mass={tas:0,kagit:0,makas:0},cnt={tas:0,kagit:0,makas:0}; let tot=0;
+  for(const b of blobs){ mass[b.type]+=b.mass; cnt[b.type]++; tot+=b.mass; }
+  const order=[...TYPES].sort((a,b)=>mass[b]-mass[a]);
+  const meta=`<div style="font-size:11px;color:var(--muted);letter-spacing:.06em;margin-bottom:3px">SÜRE ${fmt(t)} · EN İYİ ${fmt(bestTime)}${streak>1?` · SERİ ${streak}`:""}</div>`;
+  document.getElementById("winResults").innerHTML=meta+order.map(ty=>{ const pct=tot?Math.round(mass[ty]/tot*100):0;
+    return `<div class="rrow"><div class="rl" style="color:${COLOR[ty]}">${LABEL[ty]}</div><div class="rt"><i style="width:${pct}%;background:${COLOR[ty]}"></i></div><div class="rn mono">${cnt[ty]}</div></div>`; }).join("");
+  document.getElementById("win").classList.remove("hidden");
+}
+function winChime(){ if(!actx||muted)return; [523,659,784].forEach((f,i)=>setTimeout(()=>beep(f,0.16,"triangle",0.04),i*110)); }
+function toMenu(){
+  document.getElementById("win").classList.add("hidden");
+  document.getElementById("start").classList.remove("hidden");
+  document.body.classList.add("menu");
+  playerType=null; mode="menu"; running=false; paused=false; amb=0;
+  updateMenuStat(); seed(); cam.x=stormCx; cam.y=stormCy; cam.zoom=0.82;
+}
+
+// ---------- input ----------
+function setM(e){ const p=e.touches?e.touches[0]:e; mouse.sx=p.clientX; mouse.sy=p.clientY; mouse.active=true; }
+function onCtrl(e){ return e.target && e.target.closest && e.target.closest("#ctrls"); }
+window.addEventListener("mousemove",setM);
+window.addEventListener("touchstart",e=>{ if(onCtrl(e))return; usingTouch=true; initAudio();
+  const tch=e.changedTouches[0]; joy.id=tch.identifier; joy.ox=tch.clientX; joy.oy=tch.clientY; joy.dx=0; joy.dy=0; mouse.active=true; },{passive:true});
+window.addEventListener("touchmove",e=>{ if(onCtrl(e))return;
+  for(const tch of e.changedTouches){ if(tch.identifier===joy.id){
+    let dx=tch.clientX-joy.ox, dy=tch.clientY-joy.oy; const l=Math.hypot(dx,dy); if(l>JOY_MAX){ dx=dx/l*JOY_MAX; dy=dy/l*JOY_MAX; } joy.dx=dx; joy.dy=dy; } }
+  e.preventDefault(); },{passive:false});
+window.addEventListener("touchend",e=>{ for(const tch of e.changedTouches){ if(tch.identifier===joy.id){ joy.id=null; joy.dx=0; joy.dy=0; } } },{passive:true});
+window.addEventListener("keydown",e=>{
+  if(e.code==="Space"){ e.preventDefault(); playerDash(); }
+  else if(e.key==="p"||e.key==="P"){ togglePause(); }
+  else if(e.key==="r"||e.key==="R"){ if((mode==="play"||mode==="over")&&playerType) startGame(playerType); }
+});
+cv.addEventListener("mousedown",e=>{ initAudio(); setM(e); playerDash(); });
+
+document.getElementById("bPause").onclick=togglePause;
+document.getElementById("bMute").onclick=()=>{ muted=!muted; document.getElementById("bMute").textContent=muted?"🔇":"🔊"; };
+const bSplit=document.getElementById("bSplit");
+bSplit.addEventListener("click",()=>playerDash());
+bSplit.addEventListener("touchstart",e=>{ e.preventDefault(); initAudio(); playerDash(); },{passive:false});
+
+// pick cards
+const pickEl=document.getElementById("pick");
+const DESC={
+  tas:"Avladığın Makas sana katılır; Kağıt'tan kaçarsın.",
+  kagit:"Avladığın Taş sana katılır; Makas'tan kaçarsın.",
+  makas:"Avladığın Kağıt sana katılır; Taş'tan kaçarsın."
+};
+for(const ty of TYPES){ const c=document.createElement("button"); c.className="card"; c.style.setProperty("--c",COLOR[ty]);
+  c.innerHTML=`<div class="glyph"><span class="kj">${KANJI[ty]}</span>${iconCard(ty)}</div><h3>${LABEL[ty]}</h3><div class="eats"><span>yer →</span><b>${LABEL[BEATS[ty]]}</b></div>`;
+  c.onclick=()=>openDetail(ty); pickEl.appendChild(c); }
+
+function openDetail(ty){
+  const dc=document.getElementById("detailCard"); dc.style.setProperty("--c",COLOR[ty]);
+  document.getElementById("dKanji").textContent=KANJI[ty];
+  document.getElementById("dName").textContent=LABEL[ty];
+  document.getElementById("dEats").innerHTML=`yer → <b>${LABEL[BEATS[ty]]}</b> · kaçar → ${LABEL[Object.keys(BEATS).find(k=>BEATS[k]===ty)]}`;
+  document.getElementById("dStats").innerHTML=`<div class="eqnote">Üç tür de <b>eşit güçte</b> — tek fark kimi avladığın. Avladığın düşman <b>senin rengine döner</b>, sürüne katılır.</div>`;
+  document.getElementById("dDesc").textContent=DESC[ty];
+  document.getElementById("dPlay").onclick=()=>{ document.getElementById("detail").classList.add("hidden"); startGame(ty); };
+  const ov=document.getElementById("detail"); ov.classList.remove("hidden");
+  dc.style.animation="none"; void dc.offsetWidth; dc.style.animation="";
+}
+document.getElementById("dBack").onclick=()=>document.getElementById("detail").classList.add("hidden");
+document.getElementById("again").onclick=toMenu;
+
+// ---------- init (ambient menu) ----------
+document.body.classList.add("menu");
+updateMenuStat();
+resize(); seed(); cam.x=stormCx; cam.y=stormCy; cam.zoom=0.82;
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
