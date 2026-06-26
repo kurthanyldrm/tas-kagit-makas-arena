@@ -650,8 +650,22 @@ function fmt(s){ s=Math.max(0,Math.floor(s)); return (s/60|0)+":"+String(s%60).p
 function updateMenuStat(){ const el=document.getElementById("menuStat");
   el.innerHTML = bestTime>0 ? `En iyi süre <b>${fmt(bestTime)}</b>${streak>1?` · Seri <b>${streak}</b>`:""}` : ""; }
 
+// ---------- fullscreen + landscape lock (best effort; Android destekler, iOS yön kilidini desteklemez) ----------
+function goLandscape(){
+  if(!("ontouchstart" in window)) return;            // sadece dokunmatik cihazlarda (masaüstünü etkileme)
+  try{
+    const el=document.documentElement;
+    const req=el.requestFullscreen||el.webkitRequestFullscreen||el.webkitRequestFullScreen;
+    const inFs=document.fullscreenElement||document.webkitFullscreenElement;
+    const lock=()=>{ try{ if(screen.orientation&&screen.orientation.lock) screen.orientation.lock("landscape").catch(()=>{}); }catch(e){} };
+    if(req && !inFs){ const p=req.call(el); if(p&&p.then) p.then(lock).catch(lock); else setTimeout(lock,80); }
+    else lock();
+  }catch(e){}
+}
+
 // ---------- flow ----------
 function startGame(type){ playerType=type; mode="play"; running=true; paused=false; initAudio();
+  goLandscape();
   document.body.classList.remove("menu");
   document.getElementById("bPause").textContent="⏸";
   document.getElementById("hintType").textContent=LABEL[type];
