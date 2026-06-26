@@ -37,6 +37,7 @@
     align-items:flex-start; justify-content:space-between; padding:12px 14px; pointer-events:none;
     padding-top:max(12px,env(safe-area-inset-top))}
   .counts{display:flex; gap:8px}
+  .hudright{display:flex; gap:8px; align-items:flex-start}
   .ctile{background:rgba(240,232,214,.78); backdrop-filter:blur(6px); border:1px solid var(--line);
     border-radius:3px; padding:6px 10px; min-width:72px; box-shadow:0 2px 8px -4px rgba(60,45,25,.3)}
   .ctile .name{font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--kasumi); display:flex; align-items:center}
@@ -47,9 +48,9 @@
     border-radius:3px; padding:6px 11px; text-align:right; box-shadow:0 2px 8px -4px rgba(60,45,25,.3)}
   #storm .lab{font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--kasumi)}
   #storm .v{font-size:18px; font-weight:600; color:var(--shu); font-variant-numeric:tabular-nums}
-  #tri{position:absolute; right:14px; bottom:64px; z-index:2; width:104px; height:94px; pointer-events:none; opacity:.95}
+  #tri{display:none}  /* oyun içi üçgen gösterge kaldırıldı (kafa karıştırıyordu) */
 
-  #hint{position:absolute; left:0; right:0; bottom:0; z-index:2; display:flex; gap:16px;
+  #hint{position:absolute; left:0; right:0; bottom:0; z-index:2; display:none; gap:16px;
     justify-content:center; align-items:center; padding:10px; padding-bottom:max(10px,env(safe-area-inset-bottom));
     font-size:12px; color:var(--kasumi); pointer-events:none}
   #hint b{color:var(--sumi); font-weight:600}
@@ -167,10 +168,36 @@
   @media (max-width:540px){ .ctile{min-width:60px; padding:5px 8px} .ctile .n{font-size:17px}
     #tri{width:84px; height:76px; bottom:54px} #hint{gap:11px; font-size:11px}
     .kanji-row .kj{font-size:clamp(36px,13vw,60px)} .seal{display:none} }
+  /* kısa/yatay ekranlar (yatay telefon): giriş ekranı taşmasın, yüksekliğe göre ölçeklensin */
+  @media (max-height:560px){
+    .overlay{justify-content:flex-start; overflow-y:auto; gap:12px; padding:14px}
+    .hero{gap:3px} .kanji-row{margin-bottom:0} .kanji-row .kj{font-size:clamp(28px,9vh,50px)}
+    .eyebrow{margin-bottom:2px} .title h1{font-size:clamp(19px,5.5vh,32px)}
+    .title p{margin-top:7px; font-size:12px; line-height:1.45; max-width:560px}
+    .menustat{margin-top:6px} .pick{gap:9px} .card{width:124px; padding:11px 12px 10px}
+    .card h3{margin-bottom:7px} .card .glyph{margin-bottom:7px}
+    .seal{display:none} #winName{font-size:clamp(28px,8vh,46px)}
+  }
+  /* ayarlar çarkı + toggle'lar */
+  #gear{position:absolute; top:max(12px,env(safe-area-inset-top)); right:max(12px,env(safe-area-inset-right)); z-index:7;
+    width:42px; height:42px; display:none; place-items:center; cursor:pointer; pointer-events:auto;
+    background:rgba(240,232,214,.82); backdrop-filter:blur(6px); border:1px solid var(--line2); border-radius:3px;
+    color:var(--sumi); font-size:18px; box-shadow:0 2px 8px -4px rgba(60,45,25,.35)}
+  body.menu #gear{display:grid}
+  #settings{z-index:8}
+  .setrow{display:flex; align-items:center; justify-content:space-between; gap:18px; width:min(320px,82vw);
+    padding:13px 2px; border-bottom:1px solid var(--line)}
+  .setrow .sl{font-family:var(--serif); font-size:15px; color:var(--sumi)}
+  .toggle{pointer-events:auto; cursor:pointer; width:52px; height:30px; border-radius:16px; border:1px solid var(--line2);
+    background:rgba(43,39,35,.12); position:relative; transition:background .15s}
+  .toggle.on{background:var(--shu)}
+  .toggle i{position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:var(--washi);
+    box-shadow:0 1px 3px rgba(60,45,25,.4); transition:left .15s}
+  .toggle.on i{left:25px}
   /* mobil/dokunmatik: pahalı blur'ları kapat (kasmayı önler) */
   @media (pointer:coarse){
-    .ctile,#storm,#toast,.cbtn,.overlay{backdrop-filter:none!important; -webkit-backdrop-filter:none!important}
-    .ctile,#storm,#toast{background:rgba(240,232,214,.93)}
+    .ctile,#storm,#toast,.cbtn,.overlay,#gear{backdrop-filter:none!important; -webkit-backdrop-filter:none!important}
+    .ctile,#storm,#toast,#gear{background:rgba(240,232,214,.93)}
     .cbtn{background:rgba(240,232,214,.93)}
     .cbtn.split{background:rgba(92,86,76,.93)}
   }
@@ -182,7 +209,10 @@
   <canvas id="cv"></canvas>
   <div id="hud">
     <div class="counts" id="counts"></div>
-    <div id="storm"><div class="lab">Alan</div><div class="v" id="stormV">—</div></div>
+    <div class="hudright">
+      <div id="storm"><div class="lab">Alan</div><div class="v" id="stormV">—</div></div>
+      <button id="bPause" class="cbtn" title="Duraklat (P)">⏸</button>
+    </div>
   </div>
   <svg id="tri" viewBox="0 0 104 94"></svg>
   <div id="toast"></div>
@@ -192,10 +222,9 @@
     <span><kbd>P</kbd> duraklat · <kbd>R</kbd> yeniden</span>
     <span>Türün: <b id="hintType">—</b></span>
   </div>
+  <button id="gear" title="Ayarlar" aria-label="Ayarlar">⚙</button>
   <div id="ctrls">
-    <button id="bMute" class="cbtn" title="Ses">🔊</button>
-    <button id="bPause" class="cbtn" title="Duraklat (P)">⏸</button>
-    <button id="bSplit" class="cbtn split" title="Atıl / dash — çift dokun, 2. parmak ya da Space">DASH</button>
+    <button id="bSplit" class="cbtn split" title="Atıl / dash — çift dokun veya 2. parmak">DASH</button>
   </div>
 
   <div class="overlay" id="start">
@@ -232,6 +261,16 @@
     <div class="results" id="winResults"></div>
     <button class="btn" id="again">Tekrar oyna</button>
     <div class="seal">勝</div>
+  </div>
+
+  <div class="overlay hidden" id="settings">
+    <div class="title"><h1 style="font-size:clamp(24px,5vw,38px)">Ayarlar</h1></div>
+    <div>
+      <div class="setrow"><span class="sl">Ses</span><div class="toggle" id="tSound"><i></i></div></div>
+      <div class="setrow"><span class="sl">Titreşim (haptik)</span><div class="toggle" id="tHaptic"><i></i></div></div>
+    </div>
+    <div style="font-size:11.5px;color:var(--kasumi);max-width:300px;line-height:1.5;margin-top:-8px">Titreşim yalnızca destekleyen cihazlarda (çoğu Android) çalışır; iPhone tarayıcısında çalışmaz.</div>
+    <button class="btn" id="setClose">Kapat</button>
   </div>
 
   <div id="rotate"><div class="ph"></div><div>Telefonu <b>yan çevir</b> — yatay oynanır</div></div>
@@ -291,7 +330,7 @@ const RK=2.3, ABSORB=0.97, KABS=1.2, EAT_EDGE=1.10, CAP=480, MIN_MASS=5;
 const GRACE=24, SHRINK=100, STORM_DPS=7;
 const JOY_DEAD=10, JOY_MAX=72;   // joystick deadzone + max radius (screen px)
 const DASH=600;                          // dash impulse
-const DASH_CD={tas:3.0, kagit:0.8, makas:1.3};   // dash cooldown per type (taş çok seyrek, kağıt sık)
+const DASH_CD={tas:3.0, kagit:1.5, makas:1.3};   // dash cooldown (saniye)
 
 // ---------- type icons (clear, distinct SVG) ----------
 function iconInner(ink,halo,type){ const H=halo;
@@ -320,7 +359,8 @@ let blobs=[], parts=[], rings=[], grid=new Map(), cell=140;
 const cam={x:WORLD.w/2,y:WORLD.h/2,zoom:1,sx:0,sy:0,shake:0};
 const mouse={sx:0,sy:0,active:false};
 const joy={id:null,ox:0,oy:0,dx:0,dy:0}; let usingTouch=false, paused=false, tapT=0,tapX=0,tapY=0,touchT=0;
-let actx=null, muted=false, lastEatSnd=0;
+let actx=null, muted=false, haptics=true, lastEatSnd=0;
+try{ muted=localStorage.getItem("tkm_sound")==="0"; haptics=localStorage.getItem("tkm_haptic")!=="0"; }catch(e){}
 let bestTime=0, streak=0, dashCd=0, countdown=0, cdLastN=0;
 let playerType=null, running=false, t=0, last=0, winner=null;
 let mode="menu", amb=0;
@@ -541,7 +581,7 @@ function playerDash(){ if(mode!=="play"||paused||countdown>0||dashCd>0)return;
     else { dx=tx-b.x; dy=ty-b.y; const d=Math.hypot(dx,dy)||1; dx/=d; dy/=d; }                      // masaüstü: imlece
     b.vx+=dx*DASH; b.vy+=dy*DASH; b.sq=Math.max(b.sq,170);
     burst(b.x-dx*radius(b.mass),b.y-dy*radius(b.mass),COLOR[b.type],3); any=true; }
-  if(any){ dashCd=DASH_CD[playerType]||1.2; shake(4); beep(300,0.14,"sawtooth",0.035); }
+  if(any){ dashCd=DASH_CD[playerType]||1.2; shake(4); beep(300,0.14,"sawtooth",0.035); if(haptics&&navigator.vibrate) navigator.vibrate(15); }
 }
 
 // ---------- render ----------
@@ -718,7 +758,7 @@ function startGame(type){ playerType=type; mode="play"; running=true; paused=fal
 function onGo(){
   beep(660,0.13,"triangle",0.05);
   const type=playerType;
-  toast(`<b>${LABEL[type]} sürüsü senin.</b><br><span>Avın <b style="color:${COLOR[BEATS[type]]}">${LABEL[BEATS[type]]}</b> — yedikçe sana katılır. Çift dokun / <kbd>Space</kbd> ile atıl. Saha kapandığında <b>en baskın renk kazanır.</b></span>`,5000);
+  toast(`<b>${LABEL[type]} sürüsü senin.</b><br><span>Avın <b style="color:${COLOR[BEATS[type]]}">${LABEL[BEATS[type]]}</b> — yedikçe sana katılır. <b>Çift dokun</b> ile atıl. Saha kapandığında <b>en baskın renk kazanır.</b></span>`,5000);
 }
 function drawCountdown(){
   const n=Math.ceil(countdown); if(n<=0) return;
@@ -789,7 +829,16 @@ window.addEventListener("keydown",e=>{
 cv.addEventListener("mousedown",e=>{ initAudio(); setM(e); playerDash(); });
 
 document.getElementById("bPause").onclick=togglePause;
-document.getElementById("bMute").onclick=()=>{ muted=!muted; document.getElementById("bMute").textContent=muted?"🔇":"🔊"; };
+// ayarlar (çark) — ses + haptik
+const settingsEl=document.getElementById("settings");
+const tSound=document.getElementById("tSound"), tHaptic=document.getElementById("tHaptic");
+function syncToggles(){ tSound.classList.toggle("on",!muted); tHaptic.classList.toggle("on",haptics); }
+function saveSet(){ try{ localStorage.setItem("tkm_sound",muted?"0":"1"); localStorage.setItem("tkm_haptic",haptics?"1":"0"); }catch(e){} }
+document.getElementById("gear").onclick=()=>{ syncToggles(); settingsEl.classList.remove("hidden"); };
+document.getElementById("setClose").onclick=()=>settingsEl.classList.add("hidden");
+tSound.onclick=()=>{ muted=!muted; if(!muted) initAudio(); syncToggles(); saveSet(); };
+tHaptic.onclick=()=>{ haptics=!haptics; if(haptics&&navigator.vibrate) navigator.vibrate(12); syncToggles(); saveSet(); };
+syncToggles();
 const bSplit=document.getElementById("bSplit");
 bSplit.addEventListener("click",()=>playerDash());
 bSplit.addEventListener("touchstart",e=>{ e.preventDefault(); initAudio(); playerDash(); },{passive:false});
