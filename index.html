@@ -759,5 +759,16 @@ resize(); seed(); cam.x=stormCx; cam.y=stormCy; cam.zoom=0.82;
 requestAnimationFrame(loop);
 })();
 </script>
+<script>
+// PWA: network-first service worker — güncellemeler otomatik gelir (silip yeniden ekleme gerekmez)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      reg.update();
+      // yeni sürüm hazır olunca bir sonraki açılışta zaten taze gelir
+    }).catch(() => {});
+  });
+}
+</script>
 </body>
 </html>
