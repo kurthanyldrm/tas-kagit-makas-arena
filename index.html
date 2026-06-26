@@ -132,8 +132,10 @@
     border:1px solid var(--line2); color:var(--sumi); border-radius:3px; width:42px; height:42px; font-size:16px;
     display:grid; place-items:center; transition:transform .1s, border-color .1s; box-shadow:0 2px 8px -4px rgba(60,45,25,.35)}
   .cbtn:hover{transform:translateY(-2px)} .cbtn:active{transform:scale(.94)}
-  .cbtn.split{width:62px; height:54px; font-size:12px; font-weight:700; letter-spacing:.08em; font-family:var(--serif);
-    background:var(--shu); color:var(--washi); border-color:var(--shu)}
+  .cbtn.split{width:66px; height:66px; border-radius:50%; font-size:12.5px; font-weight:700; letter-spacing:.12em; font-family:var(--sans);
+    background:rgba(92,86,76,.82); color:var(--washi); border-color:rgba(70,64,56,.55);
+    box-shadow:0 4px 12px -4px rgba(60,45,25,.45)}
+  .cbtn.split:active{background:rgba(70,64,56,.9)}
   .menustat{margin-top:16px; font-size:12.5px; color:var(--kasumi); letter-spacing:.04em}
   .menustat b{color:var(--sumi)}
   /* detail (character grows in) */
@@ -186,7 +188,7 @@
   <div id="ctrls">
     <button id="bMute" class="cbtn" title="Ses">🔊</button>
     <button id="bPause" class="cbtn" title="Duraklat (P)">⏸</button>
-    <button id="bSplit" class="cbtn split" title="Atıl / dash (Space)">ATIL</button>
+    <button id="bSplit" class="cbtn split" title="Atıl / dash — çift dokun, 2. parmak ya da Space">DASH</button>
   </div>
 
   <div class="overlay" id="start">
@@ -308,7 +310,7 @@ let W=0,H=0,DPR=1;
 let blobs=[], parts=[], rings=[], grid=new Map(), cell=140;
 const cam={x:WORLD.w/2,y:WORLD.h/2,zoom:1,sx:0,sy:0,shake:0};
 const mouse={sx:0,sy:0,active:false};
-const joy={id:null,ox:0,oy:0,dx:0,dy:0}; let usingTouch=false, paused=false;
+const joy={id:null,ox:0,oy:0,dx:0,dy:0}; let usingTouch=false, paused=false, tapT=0,tapX=0,tapY=0,touchT=0;
 let actx=null, muted=false, lastEatSnd=0;
 let bestTime=0, streak=0, dashCd=0;
 let playerType=null, running=false, t=0, last=0, winner=null;
@@ -506,12 +508,15 @@ function checkWin(safeR){
 }
 
 function playerDash(){ if(mode!=="play"||paused||dashCd>0)return;
-  let jx=0,jy=0,joyOn=false;
-  if(usingTouch && (joy.dx||joy.dy)){ const l=Math.hypot(joy.dx,joy.dy)||1; jx=joy.dx/l; jy=joy.dy/l; joyOn=true; }
+  let jx=0,jy=0,useJoy=false;
+  if(usingTouch && joy.id!==null){ const l=Math.hypot(joy.dx,joy.dy); if(l>JOY_DEAD){ jx=joy.dx/l; jy=joy.dy/l; useJoy=true; } }
   const tx=s2wx(mouse.sx),ty=s2wy(mouse.sy);
   let any=false;
   for(const b of blobs){ if(b.type!==playerType)continue;
-    let dx,dy; if(joyOn){ dx=jx; dy=jy; } else { dx=tx-b.x; dy=ty-b.y; const d=Math.hypot(dx,dy)||1; dx/=d; dy/=d; }
+    let dx,dy;
+    if(useJoy){ dx=jx; dy=jy; }                                  // joystick yönüne atıl
+    else if(usingTouch){ const v=Math.hypot(b.vx,b.vy); if(v<1) continue; dx=b.vx/v; dy=b.vy/v; }  // merkezdeyse mevcut yöne (köşeye değil)
+    else { dx=tx-b.x; dy=ty-b.y; const d=Math.hypot(dx,dy)||1; dx/=d; dy/=d; }                      // masaüstü: imlece
     b.vx+=dx*DASH; b.vy+=dy*DASH; b.sq=Math.max(b.sq,170);
     burst(b.x-dx*radius(b.mass),b.y-dy*radius(b.mass),COLOR[b.type],3); any=true; }
   if(any){ dashCd=DASH_CD[playerType]||1.2; shake(4); beep(300,0.14,"sawtooth",0.035); }
@@ -708,12 +713,21 @@ function setM(e){ const p=e.touches?e.touches[0]:e; mouse.sx=p.clientX; mouse.sy
 function onCtrl(e){ return e.target && e.target.closest && e.target.closest("#ctrls"); }
 window.addEventListener("mousemove",setM);
 window.addEventListener("touchstart",e=>{ if(onCtrl(e))return; usingTouch=true; initAudio();
-  const tch=e.changedTouches[0]; joy.id=tch.identifier; joy.ox=tch.clientX; joy.oy=tch.clientY; joy.dx=0; joy.dy=0; mouse.active=true; },{passive:true});
+  const tch=e.changedTouches[0];
+  if(joy.id===null){
+    const now=performance.now();
+    if(now-tapT<300 && Math.hypot(tch.clientX-tapX,tch.clientY-tapY)<50) playerDash();   // çift dokunuş (herhangi bir yer) = atıl
+    joy.id=tch.identifier; joy.ox=tch.clientX; joy.oy=tch.clientY; joy.dx=0; joy.dy=0;
+    touchT=now; mouse.sx=tch.clientX; mouse.sy=tch.clientY; mouse.active=true;
+  } else { playerDash(); }                                                                // ikinci parmak (joystick aktifken) = atıl
+},{passive:true});
 window.addEventListener("touchmove",e=>{ if(onCtrl(e))return;
   for(const tch of e.changedTouches){ if(tch.identifier===joy.id){
-    let dx=tch.clientX-joy.ox, dy=tch.clientY-joy.oy; const l=Math.hypot(dx,dy); if(l>JOY_MAX){ dx=dx/l*JOY_MAX; dy=dy/l*JOY_MAX; } joy.dx=dx; joy.dy=dy; } }
+    let dx=tch.clientX-joy.ox, dy=tch.clientY-joy.oy; const l=Math.hypot(dx,dy); if(l>JOY_MAX){ dx=dx/l*JOY_MAX; dy=dy/l*JOY_MAX; } joy.dx=dx; joy.dy=dy; mouse.sx=tch.clientX; mouse.sy=tch.clientY; } }
   e.preventDefault(); },{passive:false});
-window.addEventListener("touchend",e=>{ for(const tch of e.changedTouches){ if(tch.identifier===joy.id){ joy.id=null; joy.dx=0; joy.dy=0; } } },{passive:true});
+window.addEventListener("touchend",e=>{ for(const tch of e.changedTouches){ if(tch.identifier===joy.id){
+    if(performance.now()-touchT<200 && Math.hypot(joy.dx,joy.dy)<15){ tapT=performance.now(); tapX=joy.ox; tapY=joy.oy; }   // kısa & sabit dokunuş = "tap" (çift dokunuş için)
+    joy.id=null; joy.dx=0; joy.dy=0; } } },{passive:true});
 window.addEventListener("keydown",e=>{
   if(e.code==="Space"){ e.preventDefault(); playerDash(); }
   else if(e.key==="p"||e.key==="P"){ togglePause(); }
