@@ -167,6 +167,13 @@
   @media (max-width:540px){ .ctile{min-width:60px; padding:5px 8px} .ctile .n{font-size:17px}
     #tri{width:84px; height:76px; bottom:54px} #hint{gap:11px; font-size:11px}
     .kanji-row .kj{font-size:clamp(36px,13vw,60px)} .seal{display:none} }
+  /* mobil/dokunmatik: pahalı blur'ları kapat (kasmayı önler) */
+  @media (pointer:coarse){
+    .ctile,#storm,#toast,.cbtn,.overlay{backdrop-filter:none!important; -webkit-backdrop-filter:none!important}
+    .ctile,#storm,#toast{background:rgba(240,232,214,.93)}
+    .cbtn{background:rgba(240,232,214,.93)}
+    .cbtn.split{background:rgba(92,86,76,.93)}
+  }
   @media (prefers-reduced-motion:reduce){ *{transition:none!important; animation:none!important} #rotate .ph{animation:none} }
 </style>
 </head>
@@ -268,13 +275,14 @@ function makeWashi(g){ const S=200,c=document.createElement("canvas"); c.width=c
   x.globalAlpha=.05; x.strokeStyle="#8a6a44";                 // faint long fibres
   for(let i=0;i<60;i++){ x.beginPath(); const yy=Math.random()*S; x.moveTo(0,yy); x.lineTo(S,yy+(Math.random()-.5)*8); x.stroke(); }
   x.globalAlpha=1; return g.createPattern(c,"repeat"); }
-const BEATS={tas:"makas",makas:"kagit",kagit:"tas"};
+const BEATS={tas:"makas",makas:"kagit",kagit:"tas"};      // anahtar, değeri yener
+const PREDOF={tas:"kagit",kagit:"makas",makas:"tas"};     // beni yiyen tür (avcım)
 const ADV=1.45;
 
 const STAT={
-  tas:   {start:20,count:24,base:96,split:34,accel:7.0},
-  kagit: {start:20,count:24,base:96,split:34,accel:7.0},
-  makas: {start:20,count:24,base:96,split:34,accel:7.0},
+  tas:   {start:20,count:28,base:96,split:34,accel:7.0},
+  kagit: {start:20,count:28,base:96,split:34,accel:7.0},
+  makas: {start:20,count:28,base:96,split:34,accel:7.0},
 };
 const GAIN=0.12;   // mass the eater takes when converting (rest stays on the flipped blob)
 const WORLD={w:2200,h:1400};
@@ -323,7 +331,8 @@ const refR=Math.sqrt(20)*RK;
 
 // ---------- layout ----------
 function resize(){
-  DPR=Math.min(2,window.devicePixelRatio||1);
+  const maxDpr=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)?1.5:2;  // mobilde daha az piksel = daha akıcı
+  DPR=Math.min(maxDpr,window.devicePixelRatio||1);
   W=window.innerWidth; H=window.innerHeight;
   cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+"px"; cv.style.height=H+"px";
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -373,6 +382,10 @@ function update(dt){
   const safeR=currentSafeR();
   // population (for AI restraint: don't fully wipe your own food)
   const pop={tas:0,kagit:0,makas:0}; for(const b of blobs) pop[b.type]++;
+  // tür başına kütle-ağırlıklı merkez (küresel sürü dinamiği için, kare başına 1 kez)
+  const cen={tas:{x:0,y:0,m:0},kagit:{x:0,y:0,m:0},makas:{x:0,y:0,m:0}};
+  for(const b of blobs){ const c=cen[b.type]; c.x+=b.x*b.mass; c.y+=b.y*b.mass; c.m+=b.mass; }
+  for(const ty of TYPES){ const c=cen[ty]; if(c.m>0){ c.x/=c.m; c.y/=c.m; } }
   // player aim: ONE model. joystick = analog direction+throttle; mouse = move toward world point (eases near it)
   const aimX=s2wx(mouse.sx), aimY=s2wy(mouse.sy);
   const SETTLE=55/cam.zoom;                 // world distance under which blobs ease to a stop
@@ -395,6 +408,12 @@ function update(dt){
         const adv=mult(b.type,o.type), w=1/(d+8);
         if(b.mass*adv>o.mass*EAT_EDGE){ const g=(o.type===preyType?restraint:1); dx2+=dx/d*w*g; dy2+=dy/d*w*g; }
         else if(o.mass>b.mass*adv*EAT_EDGE){ const f=w*(o.mass/(b.mass*adv)); dx2-=dx/d*f; dy2-=dy/d*f; } });
+      // küresel sürü dinamiği: avının olduğu yöne yönel, avcından uzaklaş (harita geneli "canlı" döngü)
+      // az komşu varsa küresel hedef baskın, kalabalıkta lokal davranış öncelikli
+      const gw = n<4 ? 0.5 : 0.12;
+      const cp=cen[preyType], cq=cen[PREDOF[b.type]];
+      if(cp.m>0){ const gx=cp.x-b.x, gy=cp.y-b.y, gd=Math.hypot(gx,gy)||1; dx2+=gx/gd*gw; dy2+=gy/gd*gw; }
+      if(cq.m>0){ const hx=b.x-cq.x, hy=b.y-cq.y, hd=Math.hypot(hx,hy)||1; dx2+=hx/hd*gw*0.9; dy2+=hy/hd*gw*0.9; }
       const ax=b.x-stormCx, ay=b.y-stormCy, dc=Math.hypot(ax,ay);
       if(dc>safeR-50){ const w=2.4; dx2-=ax/(dc||1)*w; dy2-=ay/(dc||1)*w; }
       if(dx2===0&&dy2===0){ dx2=(stormCx-b.x)*.001; dy2=(stormCy-b.y)*.001; }
@@ -454,7 +473,7 @@ function convert(big,small){
   small.sq = Math.max(small.sq,170);
   burst(small.x,small.y,COLOR[big.type], 6);    // new colour bloom
   ring(small.x,small.y,radius(small.mass)*1.2,COLOR[big.type]);
-  if(big.type===playerType){ const now=performance.now(); if(now-lastEatSnd>50){ lastEatSnd=now; beep(380+Math.random()*120,0.08,"triangle",0.03); } shake(2); }
+  if(big.type===playerType){ ring(small.x,small.y,radius(small.mass)*1.8,WASHI); const now=performance.now(); if(now-lastEatSnd>50){ lastEatSnd=now; beep(380+Math.random()*120,0.08,"triangle",0.03); } shake(2); }
   else if(wasMine){ ring(small.x,small.y,radius(small.mass)*1.3,EMBER); shake(2); }
 }
 
