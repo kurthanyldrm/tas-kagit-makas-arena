@@ -453,6 +453,10 @@ function update(dt){
   const cen={tas:{x:0,y:0,m:0},kagit:{x:0,y:0,m:0},makas:{x:0,y:0,m:0}};
   for(const b of blobs){ const c=cen[b.type]; c.x+=b.x*b.mass; c.y+=b.y*b.mass; c.m+=b.mass; }
   for(const ty of TYPES){ const c=cen[ty]; if(c.m>0){ c.x/=c.m; c.y/=c.m; } }
+  // yem spatial — botların yem arayışı için (boş boş beklemesin)
+  const fgrid=new Map();
+  for(let i=0;i<food.length;i++){ const f=food[i]; const k=((f.x/cell)|0)+","+((f.y/cell)|0); let a=fgrid.get(k); if(!a){a=[];fgrid.set(k,a);} a.push(f); }
+  const nearestFood=(b)=>{ const gx=(b.x/cell)|0,gy=(b.y/cell)|0; let best=null,bd=1e9; for(let ox=-1;ox<=1;ox++)for(let oy=-1;oy<=1;oy++){ const a=fgrid.get((gx+ox)+","+(gy+oy)); if(a)for(const f of a){ const dd=(f.x-b.x)**2+(f.y-b.y)**2; if(dd<bd){bd=dd;best=f;} } } return best; };
   // player aim: ONE model. joystick = analog direction+throttle; mouse = move toward world point (eases near it)
   const aimX=s2wx(mouse.sx), aimY=s2wy(mouse.sy);
   const SETTLE=55/cam.zoom;                 // world distance under which blobs ease to a stop
@@ -481,12 +485,12 @@ function update(dt){
           if(ed>0.001 && ed<radius(b.mass)+radius(o.mass)+10){ dx2+=ex/ed*0.35; dy2+=ey/ed*0.35; } });
       }
     } else {
-      let n=0; const preyType=BEATS[b.type];
+      let n=0, chased=false; const preyType=BEATS[b.type];
       const restraint = pop[preyType]<6 ? 0.25 : 1; // ease off when your food is scarce
       near(b,j=>{ if(j===i||n>14) return; const o=blobs[j]; if(o.type===b.type) return;
         const dx=o.x-b.x, dy=o.y-b.y, d=Math.hypot(dx,dy); if(d>190||d<.001) return; n++;
         const adv=mult(b.type,o.type), w=1/(d+8);
-        if(b.mass*adv>o.mass*EAT_EDGE){ const g=(o.type===preyType?restraint:1)*aggro; dx2+=dx/d*w*g; dy2+=dy/d*w*g; }
+        if(b.mass*adv>o.mass*EAT_EDGE){ const g=(o.type===preyType?restraint:1)*aggro; dx2+=dx/d*w*g; dy2+=dy/d*w*g; chased=true; }
         else if(o.mass>b.mass*adv*EAT_EDGE){ const f=w*(o.mass/(b.mass*adv)); dx2-=dx/d*f; dy2-=dy/d*f; } });
       // küresel sürü dinamiği: avının olduğu yöne yönel, avcından uzaklaş (harita geneli "canlı" döngü)
       // az komşu varsa küresel hedef baskın, kalabalıkta lokal davranış öncelikli
@@ -494,8 +498,10 @@ function update(dt){
       const cp=cen[preyType], cq=cen[PREDOF[b.type]];
       if(cp.m>0){ const gx=cp.x-b.x, gy=cp.y-b.y, gd=Math.hypot(gx,gy)||1; dx2+=gx/gd*gw; dy2+=gy/gd*gw; }
       if(cq.m>0){ const hx=b.x-cq.x, hy=b.y-cq.y, hd=Math.hypot(hx,hy)||1; dx2+=hx/hd*gw*0.9; dy2+=hy/hd*gw*0.9; }
-      // oyuncunun AVCISI olan tür (bu botun avı = oyuncu türü) lideri aktif kovalar → oyuncu serbest gezemez
-      if(leader && BEATS[b.type]===playerType){ const lx=leader.x-b.x, ly=leader.y-b.y, ld=Math.hypot(lx,ly)||1; const lw=0.6*aggro; dx2+=lx/ld*lw; dy2+=ly/ld*lw; }
+      // oyuncunun AVCISI türü, SADECE lideri gerçekten yiyebilecek kadar büyükse onu kovalar (küçükler orbit atmaz, yeme gider)
+      if(leader && BEATS[b.type]===playerType && b.mass*mult(b.type,playerType) > leader.mass*EAT_EDGE){ const lx=leader.x-b.x, ly=leader.y-b.y, ld=Math.hypot(lx,ly)||1; const lw=0.7*aggro; dx2+=lx/ld*lw; dy2+=ly/ld*lw; chased=true; }
+      // yakında yenecek av yoksa: en yakın yeme git (büyümek için) → boş boş beklemez
+      if(!chased){ const f=nearestFood(b); if(f){ const fx=f.x-b.x, fy=f.y-b.y, fd=Math.hypot(fx,fy)||1; dx2+=fx/fd*0.6; dy2+=fy/fd*0.6; } }
       const ax=b.x-stormCx, ay=b.y-stormCy, dc=Math.hypot(ax,ay);
       if(dc>safeR-50){ const w=2.4; dx2-=ax/(dc||1)*w; dy2-=ay/(dc||1)*w; }
       if(dx2===0&&dy2===0){ dx2=(stormCx-b.x)*.001; dy2=(stormCy-b.y)*.001; }
