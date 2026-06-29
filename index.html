@@ -339,10 +339,10 @@ const RK=2.3, ABSORB=0.97, KABS=1.2, EAT_EDGE=1.10, CAP=480, MIN_MASS=5;
 const GRACE=75, SHRINK=150, STORM_DPS=7;   // sis 75sn'de başlar, ~225sn'de kapanır (uzun, hikâyeli maçlar)
 const SAFE_T=18;                           // ilk 18 sn oyuncu dokunulmaz (güvenli başlangıç + kolay ilk zafer)
 const FOOD_N=90, FOOD_MASS=6;              // nötr yemler: herkes yer, büyümeyi besler, kolay ilk avlar
-const AGGRO_T0=12, AGGRO_T1=60;            // botlar AGGRO_T0'a kadar pasif, AGGRO_T1'de tam agresif
+const AGGRO_T0=8, AGGRO_T1=35;             // botlar AGGRO_T0'a kadar pasif, AGGRO_T1'de tam agresif (daha erken canlanır)
 const JOY_DEAD=10, JOY_MAX=72;   // joystick deadzone + max radius (screen px)
 const DASH=600;                          // dash impulse
-const DASH_CD={tas:3.0, kagit:1.5, makas:1.3};   // dash cooldown (saniye)
+const DASH_CD={tas:1.8, kagit:1.8, makas:1.8};   // dash cooldown — eşit = adil (asimetri dengesizlik yapıyordu)
 
 // ---------- type icons (clear, distinct SVG) ----------
 function iconInner(ink,halo,type){ const H=halo;
@@ -376,6 +376,7 @@ try{ muted=localStorage.getItem("tkm_sound")==="0"; haptics=localStorage.getItem
 let bestTime=0, streak=0, dashCd=0, countdown=0, cdLastN=0;
 let playerType=null, running=false, t=0, last=0, winner=null;
 let leader=null, leaderDown=false, lastFloat=0, combo=0, comboT=0;   // lider blob + dopamin/combo geri bildirimi
+let cornerOf={tas:-Math.PI/2, kagit:Math.PI*5/6, makas:Math.PI/6};   // her maç rastgele dağıtılır (denge)
 let mode="menu", amb=0;
 let stormCx=WORLD.w/2, stormCy=WORLD.h/2, maxR=Math.min(WORLD.w,WORLD.h)*0.5;
 
@@ -413,7 +414,10 @@ function topUpFood(){ let g=0; while(food.length<FOOD_N && g++<8) spawnFood(); }
 function seed(){
   blobs=[]; parts=[]; rings=[]; floats=[]; food=[];
   const baseR=maxR*0.6, spread=maxR*0.27;
-  for(const ty of TYPES){ const st=STAT[ty], ba=BASE_ANG[ty];
+  const angs=[-Math.PI/2, Math.PI/6, Math.PI*5/6];                          // köşeleri her maç rastgele dağıt → tür dengesi
+  for(let i=angs.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; const t=angs[i];angs[i]=angs[j];angs[j]=t; }
+  TYPES.forEach((ty,idx)=>{ cornerOf[ty]=angs[idx]; });
+  for(const ty of TYPES){ const st=STAT[ty], ba=cornerOf[ty];
     const bx=stormCx+Math.cos(ba)*baseR, by=stormCy+Math.sin(ba)*baseR;   // her tür kendi köşe-kolonisinde başlar (iç içe değil)
     for(let i=0;i<st.count;i++){
       const a=Math.random()*Math.PI*2, r=Math.sqrt(Math.random())*spread;
@@ -486,10 +490,12 @@ function update(dt){
         else if(o.mass>b.mass*adv*EAT_EDGE){ const f=w*(o.mass/(b.mass*adv)); dx2-=dx/d*f; dy2-=dy/d*f; } });
       // küresel sürü dinamiği: avının olduğu yöne yönel, avcından uzaklaş (harita geneli "canlı" döngü)
       // az komşu varsa küresel hedef baskın, kalabalıkta lokal davranış öncelikli
-      const gw = (n<4 ? 0.5 : 0.12) * aggro;
+      const gw = (n<4 ? 0.6 : 0.16) * aggro;
       const cp=cen[preyType], cq=cen[PREDOF[b.type]];
       if(cp.m>0){ const gx=cp.x-b.x, gy=cp.y-b.y, gd=Math.hypot(gx,gy)||1; dx2+=gx/gd*gw; dy2+=gy/gd*gw; }
       if(cq.m>0){ const hx=b.x-cq.x, hy=b.y-cq.y, hd=Math.hypot(hx,hy)||1; dx2+=hx/hd*gw*0.9; dy2+=hy/hd*gw*0.9; }
+      // oyuncunun AVCISI olan tür (bu botun avı = oyuncu türü) lideri aktif kovalar → oyuncu serbest gezemez
+      if(leader && BEATS[b.type]===playerType){ const lx=leader.x-b.x, ly=leader.y-b.y, ld=Math.hypot(lx,ly)||1; const lw=0.6*aggro; dx2+=lx/ld*lw; dy2+=ly/ld*lw; }
       const ax=b.x-stormCx, ay=b.y-stormCy, dc=Math.hypot(ax,ay);
       if(dc>safeR-50){ const w=2.4; dx2-=ax/(dc||1)*w; dy2-=ay/(dc||1)*w; }
       if(dx2===0&&dy2===0){ dx2=(stormCx-b.x)*.001; dy2=(stormCy-b.y)*.001; }
@@ -811,7 +817,7 @@ function startGame(type){ playerType=type; mode="play"; running=true; paused=fal
   document.getElementById("start").classList.add("hidden");
   document.getElementById("win").classList.add("hidden");
   resize(); seed(); buildHud();
-  const ba=BASE_ANG[type], bx=stormCx+Math.cos(ba)*maxR*0.6, by=stormCy+Math.sin(ba)*maxR*0.6;
+  const ba=cornerOf[type], bx=stormCx+Math.cos(ba)*maxR*0.6, by=stormCy+Math.sin(ba)*maxR*0.6;
   // LİDER blobu seç: koloni merkezine en yakın olan, biraz daha iri/dayanıklı (oyuncunun avatarı)
   leader=null; leaderDown=false; let bestD=1e9;
   for(const b of blobs){ if(b.type!==type) continue; const dd=(b.x-bx)**2+(b.y-by)**2; if(dd<bestD){ bestD=dd; leader=b; } }
