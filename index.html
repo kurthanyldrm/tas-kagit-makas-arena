@@ -582,14 +582,12 @@ function updateCamera(dt){
     // kamera LİDERe kilitli (net "ben buyum" hissi); zoom sürünün liderin etrafındaki yayılımına göre
     const L=leader;
     if(L && L.type===playerType){
-      let v=0,n=0,maxM=L.mass;
-      for(const b of blobs) if(b.type===playerType){ const ddx=b.x-L.x, ddy=b.y-L.y; v+=ddx*ddx+ddy*ddy; n++; if(b.mass>maxM)maxM=b.mass; }
-      const rms=Math.sqrt(v/Math.max(1,n));
-      const need=Math.max(rms*1.5 + radius(maxM)*3.0 + Math.min(n,80)*2.4 + 190, 260);
-      const tz=Math.max(0.5, Math.min(1.4, (Math.min(W,H)/2)/need));
+      // zoom liderin boyutuna göre: küçükken yakın, büyüdükçe uzaklaşır (agar hissi)
+      const desired=Math.min(W,H)*0.075;
+      const tz=Math.max(0.55, Math.min(2.1, desired/Math.max(6,radius(L.mass))));
       cam.x+=(L.x-cam.x)*Math.min(1,dt*7);                        // lidere sıkı takip
       cam.y+=(L.y-cam.y)*Math.min(1,dt*7);
-      cam.zoom+=(tz-cam.zoom)*Math.min(1,dt*2.2);
+      cam.zoom+=(tz-cam.zoom)*Math.min(1,dt*2.5);
     }
   }
   // clamp camera so the view never leaves the world
@@ -605,9 +603,12 @@ function checkWin(safeR){
   for(const b of blobs){ alive[b.type]++; mass[b.type]+=b.mass; }
   const surv=TYPES.filter(ty=>alive[ty]>0);
   const dom=()=> TYPES.reduce((a,b)=> (alive[a]!==alive[b] ? (alive[a]>alive[b]?a:b) : (mass[a]>=mass[b]?a:b)) ); // most blobs, mass breaks ties
-  if(mode==="play" && playerType){   // LİDER ölürse (yenilirse/açlıktan) kaybedersin — lider yaşadıkça geri dönüş mümkün
-    const leaderDead = !leader || leader.type!==playerType || leader.mass<MIN_MASS;
-    if(leaderDead){ leaderDown=true; winner=dom(); return endGame(alive); }
+  if(mode==="play" && playerType){   // lider düşerse en büyük blobun lider olur; sadece TÜM blobların bitince kaybedersin
+    if(!leader || leader.type!==playerType || leader.mass<MIN_MASS){
+      let best=null,bm=0; for(const b of blobs) if(b.type===playerType && b.mass>bm){ bm=b.mass; best=b; }
+      if(best){ leader=best; }
+      else { leaderDown=true; winner=dom(); return endGame(alive); }
+    }
   }
   if(surv.length<=1){ winner=surv[0]||playerType; return endGame(alive); }   // only one colour left
   if(safeR<=20){ winner=dom(); return endGame(alive); }                       // arena closed -> most dominant colour wins
@@ -666,9 +667,9 @@ function draw(){
     ctx.arc(w2sx(r.x),w2sy(r.y),(r.r+(r.max-r.r)*k)*z,0,6.283);
     ctx.strokeStyle=r.color; ctx.globalAlpha=(1-k)*.7; ctx.lineWidth=2; ctx.stroke(); ctx.globalAlpha=1; }
 
-  // nötr yemler (küçük gri noktalar)
+  // nötr yemler (görünür gri-mürekkep noktalar)
   for(const f of food){ const sx=w2sx(f.x), sy=w2sy(f.y); if(sx<-6||sx>W+6||sy<-6||sy>H+6) continue;
-    ctx.beginPath(); ctx.arc(sx,sy,3.1*z,0,6.283); ctx.fillStyle="rgba(120,110,95,.55)"; ctx.fill(); }
+    const fr=Math.max(2.8,4.2*z); ctx.beginPath(); ctx.arc(sx,sy,fr,0,6.283); ctx.fillStyle="rgba(88,80,66,.7)"; ctx.fill(); }
 
   // blobs (culled, squash/stretch, glyphs, queen highlight)
   let queen=(mode==="play" && leader && leader.type===playerType) ? leader : null;   // lider = vurgulanan avatar
