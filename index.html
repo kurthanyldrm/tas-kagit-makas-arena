@@ -38,6 +38,14 @@
     padding-top:max(12px,env(safe-area-inset-top))}
   .counts{display:flex; gap:8px}
   .hudright{display:flex; gap:8px; align-items:flex-start}
+  .ctile .rank{font-size:9px; color:var(--kasumi); margin-right:4px; vertical-align:middle}
+  .ctile .you{font-size:7.5px; letter-spacing:.1em; background:var(--shu); color:var(--washi); padding:0 4px; border-radius:2px; margin-left:5px; vertical-align:middle}
+  .ctile.me{border-color:var(--shu); box-shadow:0 0 0 1px var(--shu), 0 2px 8px -4px rgba(60,45,25,.3)}
+  #objective{position:absolute; top:max(10px,env(safe-area-inset-top)); left:50%; transform:translateX(-50%); z-index:2;
+    display:none; font-size:11px; letter-spacing:.03em; color:var(--kasumi); pointer-events:none; white-space:nowrap;
+    background:rgba(240,232,214,.82); border:1px solid var(--line); border-radius:3px; padding:5px 12px}
+  body:not(.menu) #objective{display:block}
+  #objective b{font-weight:700}
   .ctile{background:rgba(240,232,214,.78); backdrop-filter:blur(6px); border:1px solid var(--line);
     border-radius:3px; padding:6px 10px; min-width:72px; box-shadow:0 2px 8px -4px rgba(60,45,25,.3)}
   .ctile .name{font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--kasumi); display:flex; align-items:center}
@@ -214,6 +222,7 @@
       <button id="bPause" class="cbtn" title="Duraklat (P)">⏸</button>
     </div>
   </div>
+  <div id="objective"></div>
   <svg id="tri" viewBox="0 0 104 94"></svg>
   <div id="toast"></div>
   <div id="hint">
@@ -327,7 +336,8 @@ const STAT={
 const GAIN=0.12;   // mass the eater takes when converting (rest stays on the flipped blob)
 const WORLD={w:2200,h:1400};
 const RK=2.3, ABSORB=0.97, KABS=1.2, EAT_EDGE=1.10, CAP=480, MIN_MASS=5;
-const GRACE=24, SHRINK=100, STORM_DPS=7;
+const GRACE=60, SHRINK=150, STORM_DPS=7;   // sis geç başlar, yavaş kapanır (uzun maçlar)
+const SAFE_T=18;                           // ilk 18 sn oyuncu dokunulmaz (güvenli başlangıç + kolay ilk zafer)
 const JOY_DEAD=10, JOY_MAX=72;   // joystick deadzone + max radius (screen px)
 const DASH=600;                          // dash impulse
 const DASH_CD={tas:3.0, kagit:1.5, makas:1.3};   // dash cooldown (saniye)
@@ -355,7 +365,7 @@ function iconCard(ty){ return `<svg class="ic" viewBox="0 0 100 100">${iconInner
 // ---------- state ----------
 const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
 let W=0,H=0,DPR=1;
-let blobs=[], parts=[], rings=[], grid=new Map(), cell=140;
+let blobs=[], parts=[], rings=[], floats=[], grid=new Map(), cell=140;
 const cam={x:WORLD.w/2,y:WORLD.h/2,zoom:1,sx:0,sy:0,shake:0};
 const mouse={sx:0,sy:0,active:false};
 const joy={id:null,ox:0,oy:0,dx:0,dy:0}; let usingTouch=false, paused=false, tapT=0,tapX=0,tapY=0,touchT=0;
@@ -363,12 +373,14 @@ let actx=null, muted=false, haptics=true, lastEatSnd=0;
 try{ muted=localStorage.getItem("tkm_sound")==="0"; haptics=localStorage.getItem("tkm_haptic")!=="0"; }catch(e){}
 let bestTime=0, streak=0, dashCd=0, countdown=0, cdLastN=0;
 let playerType=null, running=false, t=0, last=0, winner=null;
+let leader=null, leaderDown=false, lastFloat=0;   // lider blob (oyuncunun avatarı) + dopamin geri bildirimi
 let mode="menu", amb=0;
 let stormCx=WORLD.w/2, stormCy=WORLD.h/2, maxR=Math.min(WORLD.w,WORLD.h)*0.5;
 
 const mult=(a,b)=> a===b?1:(BEATS[a]===b?ADV:1/ADV);
 const radius=m=>Math.sqrt(m)*RK;
 const refR=Math.sqrt(20)*RK;
+const safeEat = v => !(v.type===playerType && mode==="play" && t<SAFE_T);   // ilk SAFE_T sn oyuncu blobları yenmez
 
 // ---------- layout ----------
 function resize(){
@@ -393,7 +405,7 @@ const s2wy=sy=>(sy-H/2)/cam.zoom+cam.y;
 // ---------- spawn ----------
 function spawn(type,x,y,m){ blobs.push({type,x,y,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,mass:m,sq:0,rt:Math.random()*2}); }
 function seed(){
-  blobs=[]; parts=[]; rings=[];
+  blobs=[]; parts=[]; rings=[]; floats=[];
   const baseR=maxR*0.6, spread=maxR*0.27;
   for(const ty of TYPES){ const st=STAT[ty], ba=BASE_ANG[ty];
     const bx=stormCx+Math.cos(ba)*baseR, by=stormCy+Math.sin(ba)*baseR;   // her tür kendi köşe-kolonisinde başlar (iç içe değil)
@@ -417,6 +429,7 @@ function burst(x,y,color,n){ for(let i=0;i<n;i++){ const a=Math.random()*6.283, 
   parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0,max:.45+Math.random()*.35,r:1.5+Math.random()*2.5,color}); }
   if(parts.length>500) parts.splice(0,parts.length-500); }
 function ring(x,y,r,color){ rings.push({x,y,r,max:r*2.2,life:0,dur:.35,color}); }
+function addFloat(x,y,text,color){ floats.push({x,y,life:0,max:0.85,text,color}); if(floats.length>16) floats.shift(); }
 function shake(a){ cam.shake=Math.min(14,cam.shake+a); }
 
 // ---------- update ----------
@@ -440,9 +453,22 @@ function update(dt){
   // steering
   for(let i=0;i<blobs.length;i++){
     const b=blobs[i], st=STAT[b.type]; let dx2=0,dy2=0;
-    if(b.type===playerType && pAim){
-      if(joyMode){ dx2=pjx; dy2=pjy; }                                    // analog vector (length 0..1 = throttle)
-      else { const dx=aimX-b.x, dy=aimY-b.y, d=Math.hypot(dx,dy)||1; const thr=Math.min(1,d/SETTLE); dx2=dx/d*thr; dy2=dy/d*thr; }
+    if(b.type===playerType && b===leader){
+      // LİDER = oyuncunun avatarı; doğrudan input ile yönlendir
+      if(pAim){
+        if(joyMode){ dx2=pjx; dy2=pjy; }
+        else { const dx=aimX-b.x, dy=aimY-b.y, d=Math.hypot(dx,dy)||1; const thr=Math.min(1,d/SETTLE); dx2=dx/d*thr; dy2=dy/d*thr; }
+      }
+    } else if(b.type===playerType){
+      // TAKİPÇİ = liderin etrafında formasyon (lidere yaklaş, halkada dur, birbirinden ayrış)
+      const L=leader;
+      if(L){ const dx=L.x-b.x, dy=L.y-b.y, d=Math.hypot(dx,dy)||1;
+        const ringR=radius(L.mass)+34, thr=Math.max(0,Math.min(1,(d-ringR)/130));
+        dx2=dx/d*thr; dy2=dy/d*thr;
+        near(b,j=>{ const o=blobs[j]; if(o===b||o.type!==playerType) return;
+          const ex=b.x-o.x, ey=b.y-o.y, ed=Math.hypot(ex,ey);
+          if(ed>0.001 && ed<radius(b.mass)+radius(o.mass)+10){ dx2+=ex/ed*0.35; dy2+=ey/ed*0.35; } });
+      }
     } else {
       let n=0; const preyType=BEATS[b.type];
       const restraint = pop[preyType]<6 ? 0.25 : 1; // ease off when your food is scarce
@@ -482,8 +508,8 @@ function update(dt){
       if(b.type===o.type){ const ov=rb+ro-d; if(ov>0&&d>.001){ const p=ov*0.04; b.x-=dx/d*p;b.y-=dy/d*p;o.x+=dx/d*p;o.y+=dy/d*p; } return; }
       if(d>Math.max(rb,ro)*0.78) return;
       const adv=mult(b.type,o.type);
-      if(b.mass*adv>o.mass*EAT_EDGE){ convert(b,o); flipped.add(j); }
-      else if(o.mass>b.mass*adv*EAT_EDGE){ convert(o,b); flipped.add(i); } });
+      if(b.mass*adv>o.mass*EAT_EDGE){ if(safeEat(o)){ convert(b,o); flipped.add(j); } }
+      else if(o.mass>b.mass*adv*EAT_EDGE){ if(safeEat(b)){ convert(o,b); flipped.add(i); } } });
   }
   // storm dmg
   for(let i=0;i<blobs.length;i++){ const b=blobs[i], dc=Math.hypot(b.x-stormCx,b.y-stormCy);
@@ -496,6 +522,7 @@ function update(dt){
   parts=parts.filter(p=>p.life<p.max);
   for(const r of rings){ r.life+=dt; }
   rings=rings.filter(r=>r.life<r.dur);
+  for(const f of floats) f.life+=dt; floats=floats.filter(f=>f.life<f.max);
 
   updateCamera(dt);
   if(mode==="menu") ambientReseed();
@@ -516,7 +543,7 @@ function convert(big,small){
   small.sq = Math.max(small.sq,170);
   burst(small.x,small.y,COLOR[big.type], 6);    // new colour bloom
   ring(small.x,small.y,radius(small.mass)*1.2,COLOR[big.type]);
-  if(big.type===playerType){ ring(small.x,small.y,radius(small.mass)*1.8,WASHI); const now=performance.now(); if(now-lastEatSnd>50){ lastEatSnd=now; beep(380+Math.random()*120,0.08,"triangle",0.03); } shake(2); }
+  if(big.type===playerType){ ring(small.x,small.y,radius(small.mass)*1.8,WASHI); const now=performance.now(); if(now-lastEatSnd>50){ lastEatSnd=now; beep(380+Math.random()*120,0.08,"triangle",0.03); } if(now-lastFloat>90){ lastFloat=now; addFloat(small.x,small.y,"+1",SUMI); } shake(2); }
   else if(wasMine){ ring(small.x,small.y,radius(small.mass)*1.3,EMBER); shake(2); }
 }
 
@@ -535,18 +562,17 @@ function updateCamera(dt){
     cam.x+=(tx-cam.x)*Math.min(1,dt*1.1); cam.y+=(ty-cam.y)*Math.min(1,dt*1.1);
     cam.zoom+=(0.82-cam.zoom)*Math.min(1,dt*1.5);
   } else {
-    // agar.io camera: mass-weighted centroid of YOUR blobs; zoom fits the swarm's spread (smooth, no snapping)
-    let mx=0,my=0,M=0,maxM=0,n=0;
-    for(const b of blobs) if(b.type===playerType){ mx+=b.x*b.mass; my+=b.y*b.mass; M+=b.mass; n++; if(b.mass>maxM)maxM=b.mass; }
-    if(M>0){
-      const cx=mx/M, cy=my/M;
-      let v=0; for(const b of blobs) if(b.type===playerType){ const ddx=b.x-cx, ddy=b.y-cy; v+=b.mass*(ddx*ddx+ddy*ddy); }
-      const rms=Math.sqrt(v/M);                                   // mass-weighted spread (outliers/new spawns barely count)
-      const need=Math.max(rms*2.0 + radius(maxM)*3.2 + Math.min(n,90)*3.4 + 200, 300); // fit spread + biggest + crowd
-      const tz=Math.max(0.46, Math.min(1.5, (Math.min(W,H)/2)/need));
-      cam.x+=(cx-cam.x)*Math.min(1,dt*6);
-      cam.y+=(cy-cam.y)*Math.min(1,dt*6);
-      cam.zoom+=(tz-cam.zoom)*Math.min(1,dt*2.2);                 // zoom eases slowly -> no nausea
+    // kamera LİDERe kilitli (net "ben buyum" hissi); zoom sürünün liderin etrafındaki yayılımına göre
+    const L=leader;
+    if(L && L.type===playerType){
+      let v=0,n=0,maxM=L.mass;
+      for(const b of blobs) if(b.type===playerType){ const ddx=b.x-L.x, ddy=b.y-L.y; v+=ddx*ddx+ddy*ddy; n++; if(b.mass>maxM)maxM=b.mass; }
+      const rms=Math.sqrt(v/Math.max(1,n));
+      const need=Math.max(rms*1.5 + radius(maxM)*3.0 + Math.min(n,80)*2.4 + 190, 260);
+      const tz=Math.max(0.5, Math.min(1.4, (Math.min(W,H)/2)/need));
+      cam.x+=(L.x-cam.x)*Math.min(1,dt*7);                        // lidere sıkı takip
+      cam.y+=(L.y-cam.y)*Math.min(1,dt*7);
+      cam.zoom+=(tz-cam.zoom)*Math.min(1,dt*2.2);
     }
   }
   // clamp camera so the view never leaves the world
@@ -562,8 +588,9 @@ function checkWin(safeR){
   for(const b of blobs){ alive[b.type]++; mass[b.type]+=b.mass; }
   const surv=TYPES.filter(ty=>alive[ty]>0);
   const dom=()=> TYPES.reduce((a,b)=> (alive[a]!==alive[b] ? (alive[a]>alive[b]?a:b) : (mass[a]>=mass[b]?a:b)) ); // most blobs, mass breaks ties
-  if(mode==="play" && playerType && alive[playerType]===0){   // your colour wiped out -> you lose
-    winner=dom(); return endGame(alive);
+  if(mode==="play" && playerType){   // LİDER ölürse (yenilirse/açlıktan) kaybedersin — lider yaşadıkça geri dönüş mümkün
+    const leaderDead = !leader || leader.type!==playerType || leader.mass<MIN_MASS;
+    if(leaderDead){ leaderDown=true; winner=dom(); return endGame(alive); }
   }
   if(surv.length<=1){ winner=surv[0]||playerType; return endGame(alive); }   // only one colour left
   if(safeR<=20){ winner=dom(); return endGame(alive); }                       // arena closed -> most dominant colour wins
@@ -623,7 +650,7 @@ function draw(){
     ctx.strokeStyle=r.color; ctx.globalAlpha=(1-k)*.7; ctx.lineWidth=2; ctx.stroke(); ctx.globalAlpha=1; }
 
   // blobs (culled, squash/stretch, glyphs, queen highlight)
-  let queen=null,qm=0; if(mode==="play"){ for(const b of blobs) if(b.type===playerType&&b.mass>qm){qm=b.mass;queen=b;} }
+  let queen=(mode==="play" && leader && leader.type===playerType) ? leader : null;   // lider = vurgulanan avatar
   const ph=0.5+0.5*Math.sin((mode==="play"?t:amb)*6);
   ctx.textAlign="center"; ctx.textBaseline="middle";
   for(const b of blobs){ const sx=w2sx(b.x), sy=w2sy(b.y), r=radius(b.mass)*z;
@@ -642,6 +669,12 @@ function draw(){
   for(const p of parts){ const k=p.life/p.max; ctx.beginPath();
     ctx.arc(w2sx(p.x),w2sy(p.y),p.r*z*(1-k*.5),0,6.283); ctx.fillStyle=p.color; ctx.globalAlpha=(1-k)*.85; ctx.fill(); }
   ctx.globalAlpha=1;
+
+  // floating "+1" (yeme geri bildirimi / dopamin)
+  if(floats.length){ ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font="700 14px "+SANS;
+    for(const f of floats){ const k=f.life/f.max; ctx.globalAlpha=Math.max(0,1-k); ctx.fillStyle=f.color;
+      ctx.fillText(f.text, w2sx(f.x), w2sy(f.y)-k*34); }
+    ctx.globalAlpha=1; }
 
   // queen off-screen pointer
   if(mode==="play"&&queen){ const sx=w2sx(queen.x), sy=w2sy(queen.y);
@@ -674,13 +707,16 @@ function draw(){
 
 // ---------- HUD ----------
 const countsEl=document.getElementById("counts"), stormV=document.getElementById("stormV"),
-      triEl=document.getElementById("tri"), triHeroEl=document.getElementById("triHero");
+      triEl=document.getElementById("tri"), triHeroEl=document.getElementById("triHero"),
+      objEl=document.getElementById("objective");
 let tiles={};
 function buildHud(){ countsEl.innerHTML=""; tiles={};
   for(const ty of TYPES){ const d=document.createElement("div");
     d.className="ctile"+(ty===playerType?" me":""); d.style.color=COLOR[ty];
-    d.innerHTML=`<div class="name"><span class="tic" style="color:${COLOR[ty]}">${KANJI[ty]}</span>${LABEL[ty]}</div><div class="n mono">0</div><div class="bar"><i style="background:${COLOR[ty]}"></i></div>`;
-    countsEl.appendChild(d); tiles[ty]={n:d.querySelector(".n"),bar:d.querySelector("i")}; } }
+    d.innerHTML=`<div class="name"><span class="rank">·</span><span class="tic" style="color:${COLOR[ty]}">${KANJI[ty]}</span>${LABEL[ty]}${ty===playerType?'<span class="you">SEN</span>':''}</div><div class="n mono">0%</div><div class="bar"><i style="background:${COLOR[ty]}"></i></div>`;
+    countsEl.appendChild(d); tiles[ty]={el:d, n:d.querySelector(".n"), bar:d.querySelector("i"), rank:d.querySelector(".rank")}; }
+  if(objEl && playerType) objEl.innerHTML=`Avın <b style="color:${COLOR[BEATS[playerType]]}">${LABEL[BEATS[playerType]]}</b> &nbsp;·&nbsp; Kaçtığın <b style="color:${COLOR[PREDOF[playerType]]}">${LABEL[PREDOF[playerType]]}</b>`;
+}
 const TRI_CORNER={tas:[52,14],kagit:[16,80],makas:[88,80]};
 const TRI_HERO={tas:[62,22],kagit:[22,106],makas:[102,106]};
 function renderTri(el,P,rmin,rmax){ const cnt={tas:0,kagit:0,makas:0}; let mx=1;
@@ -695,8 +731,10 @@ function renderTri(el,P,rmin,rmax){ const cnt={tas:0,kagit:0,makas:0}; let mx=1;
 function drawTri(){ renderTri(triEl,TRI_CORNER,5,16); }
 function updateHud(){ const cnt={tas:0,kagit:0,makas:0},mass={tas:0,kagit:0,makas:0}; let tot=0;
   for(const b of blobs){ cnt[b.type]++; mass[b.type]+=b.mass; tot+=b.mass; }
-  for(const ty of TYPES){ tiles[ty].n.textContent=cnt[ty]; tiles[ty].bar.style.width=(tot?mass[ty]/tot*100:0)+"%"; }
-  stormV.textContent=Math.round(currentSafeR()/maxR*100)+"%"; drawTri();
+  const order=[...TYPES].sort((a,b)=>mass[b]-mass[a]), medal=["①","②","③"];
+  order.forEach((ty,idx)=>{ const ti=tiles[ty], pct=tot?Math.round(mass[ty]/tot*100):0;
+    ti.n.textContent=pct+"%"; ti.bar.style.width=pct+"%"; ti.el.style.order=idx; ti.rank.textContent=medal[idx]; });
+  stormV.textContent=Math.round(currentSafeR()/maxR*100)+"%";
   bSplit.style.opacity = dashCd>0 ? 0.4 : 1; }
 
 // ---------- toast ----------
@@ -751,7 +789,12 @@ function startGame(type){ playerType=type; mode="play"; running=true; paused=fal
   document.getElementById("start").classList.add("hidden");
   document.getElementById("win").classList.add("hidden");
   resize(); seed(); buildHud();
-  const ba=BASE_ANG[type]; cam.zoom=1; cam.x=stormCx+Math.cos(ba)*maxR*0.6; cam.y=stormCy+Math.sin(ba)*maxR*0.6;  // kamera senin koloni köşene
+  const ba=BASE_ANG[type], bx=stormCx+Math.cos(ba)*maxR*0.6, by=stormCy+Math.sin(ba)*maxR*0.6;
+  // LİDER blobu seç: koloni merkezine en yakın olan, biraz daha iri/dayanıklı (oyuncunun avatarı)
+  leader=null; leaderDown=false; let bestD=1e9;
+  for(const b of blobs){ if(b.type!==type) continue; const dd=(b.x-bx)**2+(b.y-by)**2; if(dd<bestD){ bestD=dd; leader=b; } }
+  if(leader) leader.mass*=2.6;
+  cam.zoom=1; cam.x=bx; cam.y=by;   // kamera senin koloni köşene
   t=0; winner=null; mouse.active=false; joy.id=null;
   countdown=3.0; cdLastN=4;                         // 3 · 2 · 1 geri sayım, sonra başla
 }
@@ -781,6 +824,7 @@ function endGame(alive){ if(mode!=="play")return; mode="over"; running=false;
   const nm=document.getElementById("winName"), sub=document.getElementById("winSub");
   nm.textContent=KANJI[winner]+"  "+LABEL[winner]+" KAZANDI"; nm.style.color=COLOR[winner];
   if(won){ sub.textContent="Sahayı sen ele geçirdin — en baskın renk seninki."; streak++; winChime(); }
+  else if(leaderDown){ sub.textContent=`Liderin düştü — sürün dağıldı.`; streak=0; beep(150,0.5,"sine",0.05); }
   else if(!playerAlive){ sub.textContent=`Senin türün (${LABEL[playerType]}) elendi.`; streak=0; beep(150,0.5,"sine",0.05); }
   else { sub.textContent=`${LABEL[winner]} baskın çıktı — saha daraldığında en güçlü oydu.`; streak=0; beep(150,0.5,"sine",0.05); }
   if(t>bestTime) bestTime=t;
