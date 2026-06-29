@@ -341,7 +341,7 @@ const SAFE_T=18;                           // ilk 18 sn oyuncu dokunulmaz (güve
 const FOOD_N=90, FOOD_MASS=6;              // nötr yemler: herkes yer, büyümeyi besler, kolay ilk avlar
 const AGGRO_T0=8, AGGRO_T1=35;             // botlar AGGRO_T0'a kadar pasif, AGGRO_T1'de tam agresif (daha erken canlanır)
 const JOY_DEAD=10, JOY_MAX=72;   // joystick deadzone + max radius (screen px)
-const DASH=600;                          // dash impulse
+const DASH_MULT=4.5, DASH_COST=0.03;     // dash: boyuta göre ölçekli itki (büyük=zayıf) + %3 kütle bedeli (spam yok)
 const DASH_CD={tas:1.8, kagit:1.8, makas:1.8};   // dash cooldown — eşit = adil (asimetri dengesizlik yapıyordu)
 
 // ---------- type icons (clear, distinct SVG) ----------
@@ -636,7 +636,9 @@ function playerDash(){ if(mode!=="play"||paused||countdown>0||dashCd>0)return;
     if(useJoy){ dx=jx; dy=jy; }                                  // joystick yönüne atıl
     else if(usingTouch){ const v=Math.hypot(b.vx,b.vy); if(v<1) continue; dx=b.vx/v; dy=b.vy/v; }  // merkezdeyse mevcut yöne (köşeye değil)
     else { dx=tx-b.x; dy=ty-b.y; const d=Math.hypot(dx,dy)||1; dx/=d; dy/=d; }                      // masaüstü: imlece
-    b.vx+=dx*DASH; b.vy+=dy*DASH; b.sq=Math.max(b.sq,170);
+    const imp=DASH_MULT*STAT[b.type].base*Math.pow(refR/radius(b.mass),0.5);                         // boyuta göre ölçekli (büyük = orantılı zayıf)
+    b.vx+=dx*imp; b.vy+=dy*imp; b.sq=Math.max(b.sq,170);
+    if(b.mass>MIN_MASS*2) b.mass*=(1-DASH_COST);                                                      // kütle bedeli (spam edilmesin)
     burst(b.x-dx*radius(b.mass),b.y-dy*radius(b.mass),COLOR[b.type],3); any=true; }
   if(any){ dashCd=DASH_CD[playerType]||1.2; shake(4); beep(300,0.14,"sawtooth",0.035); if(haptics&&navigator.vibrate) navigator.vibrate(15); }
 }
