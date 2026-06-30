@@ -136,7 +136,7 @@
   @keyframes tilt{0%,40%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
 
   body.menu #hud, body.menu #tri, body.menu #hint, body.menu #ctrls, body.menu #forms{display:none}
-  #forms{position:absolute; right:88px; bottom:64px; z-index:3; display:flex; gap:7px}   /* DASH'in hemen solunda */
+  #forms{position:absolute; right:max(14px,env(safe-area-inset-right)); bottom:128px; z-index:3; display:flex; flex-direction:column; gap:10px; align-items:flex-end}   /* DASH'in üstünde dikey sütun (tek başparmak için net) */
   .fbtn{pointer-events:auto; cursor:pointer; width:46px; height:46px; border-radius:6px; font-family:var(--serif); font-size:21px;
     background:rgba(240,232,214,.85); border:1px solid var(--line2); color:var(--sumi); display:grid; place-items:center;
     box-shadow:0 2px 8px -4px rgba(60,45,25,.35); transition:transform .1s}
@@ -292,6 +292,7 @@
       <div class="setrow"><span class="sl">Titreşim (haptik)</span><div class="toggle" id="tHaptic"><i></i></div></div>
     </div>
     <div style="font-size:11.5px;color:var(--kasumi);max-width:300px;line-height:1.5;margin-top:-8px">Titreşim yalnızca destekleyen cihazlarda (çoğu Android) çalışır; iPhone tarayıcısında çalışmaz.</div>
+    <div id="stats" style="font-size:11.5px;color:var(--kasumi);max-width:330px;line-height:1.7;text-align:center;border-top:1px solid var(--line);padding-top:12px"></div>
     <button class="btn" id="setClose">Kapat</button>
   </div>
 
@@ -356,7 +357,7 @@ const AGGRO_T0=8, AGGRO_T1=35;             // botlar AGGRO_T0'a kadar pasif, AGG
 const JOY_DEAD=10, JOY_MAX=72;   // joystick deadzone + max radius (screen px)
 const DASH_MULT=4.5, DASH_COST=0.03;     // dash: boyuta göre ölçekli itki (büyük=zayıf) + %3 kütle bedeli (spam yok)
 const MORPH_DUR=2.0, MORPH_COMMIT=0.45, MORPH_CD=6, MORPH_COST=0.08, MORPH_REVEAL=0.45;  // form değiştirme: süre / commit penceresi / cooldown / kütle bedeli / telegraf görünme
-const MBOT_DUR=1.5, MBOT_CD=4.0, MBOT_COST=0.06, MBOT_RANGE=115;   // bireysel bot form değiştirme (sim-doğrulamalı)
+const MBOT_DUR=1.5, MBOT_CD=4.0, MBOT_COST=0.06, MBOT_RANGE=115, MBOT_FEINT=0.3;   // bireysel bot form değiştirme + %30 blöf (feint) — sim-doğrulamalı
 const DASH_CD={tas:1.8, kagit:1.8, makas:1.8};   // dash cooldown — eşit = adil (asimetri dengesizlik yapıyordu)
 
 // ---------- type icons (clear, distinct SVG) ----------
@@ -423,7 +424,7 @@ const s2wx=sx=>(sx-W/2)/cam.zoom+cam.x;
 const s2wy=sy=>(sy-H/2)/cam.zoom+cam.y;
 
 // ---------- spawn ----------
-function spawn(type,x,y,m){ blobs.push({type,x,y,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,mass:m,sq:0,rt:Math.random()*2,bot:true,mcd:Math.random()*2,mt:0,mtype:null}); }
+function spawn(type,x,y,m){ blobs.push({type,x,y,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,mass:m,sq:0,rt:Math.random()*2,bot:true,mcd:Math.random()*2,mt:0,mtype:null,feint:false}); }
 function spawnFood(){ const a=Math.random()*6.283, r=Math.sqrt(Math.random())*(currentSafeR()*0.92);
   food.push({x:stormCx+Math.cos(a)*r, y:stormCy+Math.sin(a)*r, m:FOOD_MASS}); }
 function seedFood(){ food=[]; for(let i=0;i<FOOD_N;i++) spawnFood(); }
@@ -545,10 +546,13 @@ function update(dt){
   // bireysel bot form değiştirme: beni yiyen bir tehdit yakınsa onu yenen türe dön (telegraf + cooldown + kütle bedeli)
   if(mode==="play") for(const b of blobs){ if(!b.bot) continue;
     if(b.mcd>0) b.mcd-=dt;
-    if(b.mt>0){ b.mt-=dt; if(b.mt<=0){ b.type=b.mtype; if(b.mass>MIN_MASS*2) b.mass*=(1-MBOT_COST); b.mcd=MBOT_CD; b.mtype=null; b.sq=Math.max(b.sq,150); } continue; }
+    if(b.mt>0){ b.mt-=dt;
+      if(b.feint && b.mt < MBOT_DUR*0.32){ b.mt=0; b.mtype=null; b.feint=false; b.mcd=MBOT_CD*0.6; }   // BLÖF: son anda iptal → seni de kandırabilir
+      else if(b.mt<=0){ b.type=b.mtype; if(b.mass>MIN_MASS*2) b.mass*=(1-MBOT_COST); b.mcd=MBOT_CD; b.mtype=null; b.sq=Math.max(b.sq,150); }
+      continue; }
     if(b.mcd>0) continue;
     let threat=null,td=1e9; near(b,j=>{ const o=blobs[j]; if(o.type===b.type) return; const dx=o.x-b.x,dy=o.y-b.y,d=Math.hypot(dx,dy); if(d>MBOT_RANGE) return; if(o.mass*mult(o.type,b.type)>b.mass*EAT_EDGE && d<td){ td=d; threat=o; } });
-    if(threat){ const want=PREDOF[threat.type]; if(want!==b.type){ b.mtype=want; b.mt=MBOT_DUR; } }
+    if(threat){ const want=PREDOF[threat.type]; if(want!==b.type){ b.mtype=want; b.mt=MBOT_DUR; b.feint=(Math.random()<MBOT_FEINT); } }
   }
   for(let i=0;i<blobs.length;i++){ if(dead.has(i)||flipped.has(i))continue; const b=blobs[i];
     near(b,j=>{ if(j<=i||dead.has(j)||flipped.has(j)||flipped.has(i))return; const o=blobs[j];
@@ -751,8 +755,9 @@ function draw(){
     const d=r*2.16; ctx.drawImage(INK[b.type], -d/2,-d/2, d,d);          // ink brushmark
     ctx.restore();
     if(r>7 && ICON[b.type] && ICON[b.type].complete){ const s=r*1.5; ctx.globalAlpha=.9; ctx.drawImage(ICON[b.type], sx-s/2, sy-s/2, s, s); ctx.globalAlpha=1; }
-    if(!b.bot){ ctx.beginPath(); ctx.arc(sx,sy,r+2.5,0,6.283); ctx.strokeStyle=rgba(WASHI,.85); ctx.lineWidth=1.6; ctx.stroke(); }
-    if(b.mt>0 && b.mtype){ ctx.beginPath(); ctx.arc(sx,sy,r+4,0,6.283); ctx.strokeStyle=COLOR[b.mtype]; ctx.globalAlpha=.7; ctx.lineWidth=2; ctx.stroke(); ctx.globalAlpha=1; }  // bot form-değiştirme telegrafı
+    if(!b.bot){ ctx.beginPath(); ctx.arc(sx,sy,r+3,0,6.283); ctx.strokeStyle=rgba(SUMI,.4); ctx.lineWidth=3.4; ctx.stroke(); ctx.beginPath(); ctx.arc(sx,sy,r+3,0,6.283); ctx.strokeStyle=rgba(WASHI,.95); ctx.lineWidth=1.8; ctx.stroke(); }  // SENİN blobun (kontrast için çift halka)
+    if(b.mt>0 && b.mtype){ const pr=r+5+ph*3; ctx.beginPath(); ctx.arc(sx,sy,pr,0,6.283); ctx.strokeStyle=COLOR[b.mtype]; ctx.globalAlpha=.55+ph*.4; ctx.lineWidth=2.6+ph*1.4; ctx.stroke(); ctx.globalAlpha=1;
+      if(r>9){ ctx.fillStyle=COLOR[b.mtype]; ctx.globalAlpha=.85; ctx.font="700 "+(r*0.9)+"px "+SERIF; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(KANJI[b.mtype], sx, sy-pr-r*0.5); ctx.globalAlpha=1; } }  // bot form telegrafı: nabız + hedef kanji
     if(b===queen){ ctx.beginPath(); ctx.arc(sx,sy,r+5+ph*3,0,6.283); ctx.strokeStyle=rgba(WASHI,.95); ctx.lineWidth=2.4; ctx.stroke();
       ctx.beginPath(); ctx.arc(sx,sy,r+5+ph*3,0,6.283); ctx.strokeStyle=rgba(EMBER,.5); ctx.lineWidth=1; ctx.stroke(); }
   }
@@ -927,6 +932,7 @@ function endGame(alive){ if(mode!=="play")return; mode="over"; running=false;
   // Kazanma artık RENK değil SEN: hayatta kaldın mı + skorun
   const survived = !leaderDown && leader && !leader.bot && leader.mass>=MIN_MASS;
   const surv=Math.floor(t), finalScore=convCount*12 + surv + peakOwned*5;
+  bumpStats({surv, score:finalScore, survived, conv:convCount});   // yerel KPI (cihazda)
   if(finalScore>bestScore) bestScore=finalScore;
   if(survived) streak++; else streak=0;
   const nm=document.getElementById("winName"), sub=document.getElementById("winSub");
@@ -979,7 +985,11 @@ const settingsEl=document.getElementById("settings");
 const tSound=document.getElementById("tSound"), tHaptic=document.getElementById("tHaptic");
 function syncToggles(){ tSound.classList.toggle("on",!muted); tHaptic.classList.toggle("on",haptics); }
 function saveSet(){ try{ localStorage.setItem("tkm_sound",muted?"0":"1"); localStorage.setItem("tkm_haptic",haptics?"1":"0"); }catch(e){} }
-document.getElementById("gear").onclick=()=>{ syncToggles(); settingsEl.classList.remove("hidden"); };
+function loadStats(){ try{ return JSON.parse(localStorage.getItem("tkm_stats"))||{}; }catch(e){ return {}; } }
+function bumpStats(o){ try{ const s=loadStats(); s.matches=(s.matches||0)+1; s.time=(s.time||0)+o.surv; s.score=(s.score||0)+o.score; s.best=Math.max(s.best||0,o.score); if(o.survived) s.win=(s.win||0)+1; s.conv=(s.conv||0)+o.conv; localStorage.setItem("tkm_stats",JSON.stringify(s)); }catch(e){} }
+function updateStatsView(){ const el=document.getElementById("stats"); if(!el) return; const s=loadStats();
+  el.innerHTML = s.matches ? `<b>${s.matches}</b> maç &nbsp;·&nbsp; ort. skor <b>${Math.round((s.score||0)/s.matches)}</b> &nbsp;·&nbsp; en iyi <b>${s.best||0}</b><br>hayatta kalma <b>%${Math.round((s.win||0)/s.matches*100)}</b> &nbsp;·&nbsp; toplam süre <b>${fmt(s.time||0)}</b>` : "Henüz maç oynamadın"; }
+document.getElementById("gear").onclick=()=>{ syncToggles(); updateStatsView(); settingsEl.classList.remove("hidden"); };
 document.getElementById("setClose").onclick=()=>settingsEl.classList.add("hidden");
 tSound.onclick=()=>{ muted=!muted; if(!muted) initAudio(); syncToggles(); saveSet(); };
 tHaptic.onclick=()=>{ haptics=!haptics; if(haptics&&navigator.vibrate) navigator.vibrate(12); syncToggles(); saveSet(); };
