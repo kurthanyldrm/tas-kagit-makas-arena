@@ -326,6 +326,9 @@ function makeInk(hex){ const S=110,c=document.createElement("canvas"); c.width=c
   g.addColorStop(0,shade(hex,.16)); g.addColorStop(.5,hex); g.addColorStop(.82,shade(hex,-.22)); g.addColorStop(.93,shade(hex,-.30)); g.addColorStop(1,rgba(hex,0));
   x.fillStyle=g; x.beginPath(); x.arc(S/2,S/2,S/2,0,6.283); x.fill(); return c; }
 for(const ty of TYPES) INK[ty]=makeInk(COLOR[ty]);
+const FAC_COLORS=["#2c2824","#2a4d74","#b23a28","#3f6b50","#7a4a6e","#a8842f"];   // faction/oyuncu renkleri (kimlik); tür SİMGEYLE gösterilir → aynı tür farklı renkte
+const INKF=FAC_COLORS.map(makeInk);
+let facCorner=[];
 
 // washi paper texture (warm fibre grain), built once
 let washiPat=null;
@@ -424,22 +427,20 @@ const s2wx=sx=>(sx-W/2)/cam.zoom+cam.x;
 const s2wy=sy=>(sy-H/2)/cam.zoom+cam.y;
 
 // ---------- spawn ----------
-function spawn(type,x,y,m){ blobs.push({type,x,y,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,mass:m,sq:0,rt:Math.random()*2,bot:true,mcd:Math.random()*2,mt:0,mtype:null,feint:false}); }
+function spawn(type,x,y,m,fac){ blobs.push({type,x,y,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,mass:m,sq:0,rt:Math.random()*2,bot:true,fac:fac||0,mcd:Math.random()*2,mt:0,mtype:null,feint:false}); }
 function spawnFood(){ const a=Math.random()*6.283, r=Math.sqrt(Math.random())*(currentSafeR()*0.92);
   food.push({x:stormCx+Math.cos(a)*r, y:stormCy+Math.sin(a)*r, m:FOOD_MASS}); }
 function seedFood(){ food=[]; for(let i=0;i<FOOD_N;i++) spawnFood(); }
 function topUpFood(){ let g=0; while(food.length<FOOD_N && g++<8) spawnFood(); }
 function seed(){
   blobs=[]; parts=[]; rings=[]; floats=[]; food=[];
-  const baseR=maxR*0.6, spread=maxR*0.27;
-  const angs=[-Math.PI/2, Math.PI/6, Math.PI*5/6];                          // köşeleri her maç rastgele dağıt → tür dengesi
-  for(let i=angs.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; const t=angs[i];angs[i]=angs[j];angs[j]=t; }
-  TYPES.forEach((ty,idx)=>{ cornerOf[ty]=angs[idx]; });
-  for(const ty of TYPES){ const st=STAT[ty], ba=cornerOf[ty];
-    const bx=stormCx+Math.cos(ba)*baseR, by=stormCy+Math.sin(ba)*baseR;   // her tür kendi köşe-kolonisinde başlar (iç içe değil)
-    for(let i=0;i<st.count;i++){
+  const NF=6, baseR=maxR*0.62, spread=maxR*0.17, per=Math.round(STAT.tas.count*3/NF), off=Math.random()*6.283;
+  facCorner=[];
+  for(let f=0;f<NF;f++){ const ty=TYPES[f%3], ba=off+f*(6.283/NF); facCorner[f]=ba;   // 6 renkli ordu (2'şer tür), çembere eşit dağılır
+    const bx=stormCx+Math.cos(ba)*baseR, by=stormCy+Math.sin(ba)*baseR;
+    for(let i=0;i<per;i++){
       const a=Math.random()*Math.PI*2, r=Math.sqrt(Math.random())*spread;
-      spawn(ty, bx+Math.cos(a)*r, by+Math.sin(a)*r, st.start*(0.8+Math.random()*0.4));
+      spawn(ty, bx+Math.cos(a)*r, by+Math.sin(a)*r, STAT[ty].start*(0.8+Math.random()*0.4), f);
     }
   }
   for(let i=blobs.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; const tmp=blobs[i]; blobs[i]=blobs[j]; blobs[j]=tmp; } // tür-bazlı index bias olmasın
@@ -597,7 +598,7 @@ function convert(big,small){
   big.mass += small.mass*GAIN;                  // eater takes a small cut
   small.mass *= (1-GAIN);
   burst(small.x,small.y,COLOR[small.type], 4);  // old colour puff
-  small.type = big.type; small.bot = big.bot; small.mt=0; small.mtype=null;   // yiyenin türüne VE sahipliğine geçer; yarım morph iptal
+  small.type = big.type; small.bot = big.bot; small.fac = big.fac; small.mt=0; small.mtype=null;   // yiyenin türüne+sahipliğine+RENGİNE geçer (ordusuna katılır)
   small.sq = Math.max(small.sq,170);
   burst(small.x,small.y,COLOR[big.type], Math.min(16, 6+(small.mass/14|0)));    // new colour bloom (kütleyle ölçekli)
   ring(small.x,small.y,radius(small.mass)*1.2,COLOR[big.type]);
@@ -615,7 +616,7 @@ function ambientReseed(){
   const cnt={tas:0,kagit:0,makas:0}; for(const b of blobs) cnt[b.type]++;
   for(const ty of TYPES){ if(cnt[ty]<6 && blobs.length<74){ for(let i=0;i<4;i++){
     const a=Math.random()*6.283, r=Math.random()*maxR*0.8;
-    spawn(ty, stormCx+Math.cos(a)*r, stormCy+Math.sin(a)*r, STAT[ty].start*(0.7+Math.random()*0.6)); } } }
+    spawn(ty, stormCx+Math.cos(a)*r, stormCy+Math.sin(a)*r, STAT[ty].start*(0.7+Math.random()*0.6), TYPES.indexOf(ty)+(Math.random()<0.5?0:3)); } } }
 }
 
 function updateCamera(dt){
@@ -752,7 +753,7 @@ function draw(){
     if(sx<-r-10||sx>W+r+10||sy<-r-10||sy>H+r+10) continue;
     const sp=Math.min(.32, b.sq/650), ang=Math.atan2(b.vy,b.vx);
     ctx.save(); ctx.translate(sx,sy); ctx.rotate(ang); ctx.scale(1+sp,1-sp*0.8);
-    const d=r*2.16; ctx.drawImage(INK[b.type], -d/2,-d/2, d,d);          // ink brushmark
+    const d=r*2.16; ctx.drawImage(INKF[b.fac], -d/2,-d/2, d,d);          // gövde = FACTION rengi (kimlik); tür simgeyle
     ctx.restore();
     if(r>7 && ICON[b.type] && ICON[b.type].complete){ const s=r*1.5; ctx.globalAlpha=.9; ctx.drawImage(ICON[b.type], sx-s/2, sy-s/2, s, s); ctx.globalAlpha=1; }
     if(!b.bot){ ctx.beginPath(); ctx.arc(sx,sy,r+3,0,6.283); ctx.strokeStyle=rgba(SUMI,.4); ctx.lineWidth=3.4; ctx.stroke(); ctx.beginPath(); ctx.arc(sx,sy,r+3,0,6.283); ctx.strokeStyle=rgba(WASHI,.95); ctx.lineWidth=1.8; ctx.stroke(); }  // SENİN blobun (kontrast için çift halka)
@@ -899,12 +900,13 @@ function startGame(type){ playerType=type; mode="play"; running=true; paused=fal
   document.getElementById("start").classList.add("hidden");
   document.getElementById("win").classList.add("hidden");
   resize(); seed(); buildHud();
-  const ba=cornerOf[type], bx=stormCx+Math.cos(ba)*maxR*0.6, by=stormCy+Math.sin(ba)*maxR*0.6;
+  const playerFac=TYPES.indexOf(type);   // oyuncu = seçtiği türün ilk faction'ı (renk = kimlik)
+  const ba=facCorner[playerFac]||0, bx=stormCx+Math.cos(ba)*maxR*0.62, by=stormCy+Math.sin(ba)*maxR*0.62;
   // LİDER blobu seç: koloni merkezine en yakın olan, biraz daha iri/dayanıklı (oyuncunun avatarı)
   leader=null; leaderDown=false; let bestD=1e9;
-  for(const b of blobs){ if(b.type!==type) continue; const dd=(b.x-bx)**2+(b.y-by)**2; if(dd<bestD){ bestD=dd; leader=b; } }
+  for(const b of blobs){ if(b.fac!==playerFac) continue; const dd=(b.x-bx)**2+(b.y-by)**2; if(dd<bestD){ bestD=dd; leader=b; } }
   if(leader) leader.mass*=2.6;
-  for(const bb of blobs) bb.bot = (bb.type!==type);   // senin renginin tüm kolonisi = oyuncunun (kontrol sende), gerisi bot
+  for(const bb of blobs) bb.bot = (bb.fac!==playerFac);   // senin FACTION'ın (rengin) = oyuncunun ordusu; gerisi bağımsız botlar
   cam.zoom=1; cam.x=bx; cam.y=by;   // kamera senin koloni köşene
   t=0; winner=null; mouse.active=false; joy.id=null;
   seedFood(); combo=0; comboT=0; convCount=0; peakOwned=0; oneColorN=0; morph.on=false; morph.target=null; morph.t=0; morph.cd=0;
