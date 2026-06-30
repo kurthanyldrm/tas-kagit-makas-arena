@@ -390,7 +390,7 @@ const joy={id:null,ox:0,oy:0,dx:0,dy:0}; let usingTouch=false, paused=false, tap
 let actx=null, muted=false, haptics=true, lastEatSnd=0;
 try{ muted=localStorage.getItem("tkm_sound")==="0"; haptics=localStorage.getItem("tkm_haptic")!=="0"; }catch(e){}
 let bestTime=0, streak=0, dashCd=0, countdown=0, cdLastN=0;
-let convCount=0, peakOwned=0, bestScore=0;   // kişisel skor (renk değil SEN kazanırsın)
+let convCount=0, peakOwned=0, bestScore=0, oneColorN=0;   // kişisel skor (renk değil SEN kazanırsın)
 let playerType=null, running=false, t=0, last=0, winner=null;
 let leader=null, leaderDown=false, lastFloat=0, combo=0, comboT=0;   // lider blob + dopamin/combo geri bildirimi
 let cornerOf={tas:-Math.PI/2, kagit:Math.PI*5/6, makas:Math.PI/6};   // her maç rastgele dağıtılır (denge)
@@ -655,7 +655,7 @@ function checkWin(safeR){
       else { leaderDown=true; winner=dom(); return endGame(alive); }
     }
   }
-  if(surv.length<=1){ winner=surv[0]||playerType; return endGame(alive); }   // only one colour left
+  if(surv.length<=1){ if(++oneColorN>90){ winner=surv[0]||playerType; return endGame(alive); } } else oneColorN=0;   // tek renk: anlık morph titremesi maçı bitirmesin (gerçekten ~1.5sn kalıcı olunca)
   if(safeR<=20){ winner=dom(); return endGame(alive); }                       // arena closed -> most dominant colour wins
 }
 
@@ -904,7 +904,7 @@ function startGame(type){ playerType=type; mode="play"; running=true; paused=fal
   for(const bb of blobs) bb.bot = (bb.type!==type);   // senin renginin tüm kolonisi = oyuncunun (kontrol sende), gerisi bot
   cam.zoom=1; cam.x=bx; cam.y=by;   // kamera senin koloni köşene
   t=0; winner=null; mouse.active=false; joy.id=null;
-  seedFood(); combo=0; comboT=0; convCount=0; peakOwned=0; morph.on=false; morph.target=null; morph.t=0; morph.cd=0;
+  seedFood(); combo=0; comboT=0; convCount=0; peakOwned=0; oneColorN=0; morph.on=false; morph.target=null; morph.t=0; morph.cd=0;
   countdown=3.0; cdLastN=4;                         // 3 · 2 · 1 geri sayım, sonra başla
 }
 function onGo(){
