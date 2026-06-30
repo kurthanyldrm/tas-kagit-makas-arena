@@ -415,7 +415,7 @@ function resize(){
   r.classList.toggle("show", portraitPhone && running);
 }
 window.addEventListener("resize",resize);
-window.addEventListener("orientationchange",()=>setTimeout(resize,200));
+window.addEventListener("orientationchange",()=>{ resize(); setTimeout(resize,150); setTimeout(resize,450); });   // rotasyonda araya kaçan boyutları yakala (UI bozulmasın)
 
 // ---------- coords ----------
 const w2sx=wx=>(wx-cam.x)*cam.zoom+W/2+cam.sx;
@@ -512,12 +512,12 @@ function update(dt){
         else if(o.mass>b.mass*adv*EAT_EDGE){ const f=w*(o.mass/(b.mass*adv)); dx2-=dx/d*f; dy2-=dy/d*f; } });
       // küresel sürü dinamiği: avının olduğu yöne yönel, avcından uzaklaş (harita geneli "canlı" döngü)
       // az komşu varsa küresel hedef baskın, kalabalıkta lokal davranış öncelikli
-      const gw = (n<4 ? 0.6 : 0.16) * aggro;
+      const gw = (n<4 ? 0.42 : 0.1) * aggro;   // küresel pull düşürüldü → botlar tek kümeye (oyuncuya) üşüşmesin, yakındaki avı kovalasın
       const cp=cen[preyType], cq=cen[PREDOF[b.type]];
       if(cp.m>0){ const gx=cp.x-b.x, gy=cp.y-b.y, gd=Math.hypot(gx,gy)||1; dx2+=gx/gd*gw; dy2+=gy/gd*gw; }
       if(cq.m>0){ const hx=b.x-cq.x, hy=b.y-cq.y, hd=Math.hypot(hx,hy)||1; dx2+=hx/hd*gw*0.9; dy2+=hy/hd*gw*0.9; }
       // oyuncunun AVCISI türü, SADECE lideri gerçekten yiyebilecek kadar büyükse onu kovalar (küçükler orbit atmaz, yeme gider)
-      if(leader && BEATS[b.type]===playerType && b.mass*mult(b.type,playerType) > leader.mass*EAT_EDGE){ const lx=leader.x-b.x, ly=leader.y-b.y, ld=Math.hypot(lx,ly)||1; const lw=0.7*aggro; dx2+=lx/ld*lw; dy2+=ly/ld*lw; chased=true; }
+      if(leader && BEATS[b.type]===playerType && b.mass*mult(b.type,playerType) > leader.mass*EAT_EDGE){ const lx=leader.x-b.x, ly=leader.y-b.y, ld=Math.hypot(lx,ly)||1; if(ld<320){ const lw=0.28*aggro; dx2+=lx/ld*lw; dy2+=ly/ld*lw; chased=true; } }   // avcı-kovalama hafifletildi + sadece yakındaysa (sana yapışmasın)
       // oyuncu form değiştiriyorsa (telegraf görünür): geleceğin avı kaçar, geleceğin avcısı yaklaşır → iptal=blöf, yanlış konumda kalırlar
       if(morph.on && morph.t>MORPH_REVEAL && leader){ const T=morph.target;
         if(BEATS[T]===b.type){ const ex=b.x-leader.x, ey=b.y-leader.y, ed=Math.hypot(ex,ey)||1; dx2+=ex/ed*0.7*aggro; dy2+=ey/ed*0.7*aggro; }
@@ -854,7 +854,10 @@ function loop(ts){
   if(!last) last=ts; let dt=(ts-last)/1000; last=ts; dt=Math.min(dt,0.05);
   if(mode==="menu"){ amb+=dt; update(dt); draw(); renderTri(triHeroEl,TRI_HERO,8,24); }
   else if(mode==="play"){
-    if(countdown>0){
+    const portraitLock = ("ontouchstart" in window) && window.innerHeight>window.innerWidth && window.innerWidth<700;
+    document.getElementById("rotate").classList.toggle("show", portraitLock);
+    if(portraitLock){ draw(); }   // yan çevirene kadar HER ŞEY (geri sayım dahil) donar
+    else if(countdown>0){
       countdown=Math.max(0,countdown-dt);
       const n=Math.ceil(countdown);
       if(n!==cdLastN){ cdLastN=n; if(n>0) beep(440,0.09,"sine",0.04); }
